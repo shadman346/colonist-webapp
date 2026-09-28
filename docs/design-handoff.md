@@ -21,6 +21,8 @@ The linked production frames currently cover the 3–4 player Base board. The re
 
 ## Match state screens
 
+The latest interaction handoff is the [artifact and Figma screen index](../design-artifacts/README.md). Its five editable screens show the small legal-corner target, separate house confirmation, dice and resource delivery, compact friend trade, and piece action palette. Use those states for the current playable UI. The saved [screen contact sheet](../design-artifacts/colonist-reference/figma-interaction-contact-sheet.png) gives a quick visual review.
+
 | Decision | Desktop frame | Phone frame |
 | --- | --- | --- |
 | Active match | [54:637](https://www.figma.com/design/kw6x7wzSsQpzAfcUfSx2Z8/?node-id=54-637) | [56:4253](https://www.figma.com/design/kw6x7wzSsQpzAfcUfSx2Z8/?node-id=56-4253) |

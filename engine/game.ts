@@ -278,8 +278,9 @@ function consumeDevelopmentCard(state: GameState, actorId: PlayerId, cardId: str
   state.developmentPlayedThisTurn = true;
 }
 
-function produce(state: GameState, total: number): void {
+function produce(state: GameState, total: number): Record<PlayerId, ResourceCounts> {
   const owed = new Map<Resource, Record<PlayerId, number>>();
+  const production: Record<PlayerId, ResourceCounts> = {};
   RESOURCES.forEach((resource) => owed.set(resource, {}));
   Object.values(state.board.hexes).forEach((hex) => {
     if (hex.number !== total || hex.id === state.robberHexId || hex.terrain === 'desert') return;
@@ -299,8 +300,13 @@ function produce(state: GameState, total: number): void {
       const granted = Math.min(due[playerId]!, state.bank[resource]);
       state.bank[resource] -= granted;
       getPlayer(state, playerId).resources[resource] += granted;
+      if (granted) {
+        production[playerId] ??= emptyResources();
+        production[playerId][resource] += granted;
+      }
     });
   });
+  return production;
 }
 
 export function bankTradeRatio(state: GameState, actorId: PlayerId, resource: Resource): 2 | 3 | 4 {
@@ -400,6 +406,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
   state.specialBuildQueue ??= [];
   state.regularNextPlayerId ??= null;
   state.lastTimeoutPlayerId = null;
+  let production: Record<PlayerId, ResourceCounts> | undefined;
 
   if (state.pendingTrade && !['accept-trade', 'reject-trade', 'cancel-trade', 'request-special-build'].includes(command.type)) {
     fail('TRADE_PENDING', 'Resolve the pending trade first');
@@ -456,7 +463,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
         state.robberReturnPhase = 'action';
         state.phase = Object.keys(state.pendingDiscards).length ? 'discard' : 'robber-move';
       } else {
-        produce(state, total);
+        production = produce(state, total);
         state.phase = 'action';
       }
       break;
@@ -708,6 +715,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
     type: command.type,
     ...(command.type === 'roll' && state.lastRoll
       ? { rollTotal: state.lastRoll[0] + state.lastRoll[1] } : {}),
+    ...(production ? { production } : {}),
   });
   state.recentActions = state.recentActions.slice(-12);
   assertGameInvariants(state);

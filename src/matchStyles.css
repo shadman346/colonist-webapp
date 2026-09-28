@@ -105,6 +105,8 @@
 .match-phase-banner p { margin: 4px 0 0; color: #d6e9f0; font-size: 11px; line-height: 1.45; }
 .match-phase-kicker { font-size: 10px; font-weight: 900; letter-spacing: .8px; color: #ffe5a2; }
 .match-dice-result { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: #ffe5a2; font-weight: 800; font-size: 12px; }
+.match-die-face { width: 24px; height: 24px; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 4px; gap: 1px; border-radius: 5px; background: linear-gradient(145deg,#fff,#d9e0df); border: 1px solid #b2bdbd; box-shadow: 1px 2px 0 #8e9fa0; }
+.match-die-face i { display: block; width: 4px; height: 4px; border-radius: 50%; background: #263946; align-self: center; justify-self: center; }
 .match-hex { filter: drop-shadow(0 2px 2px #69492d5c); }
 .match-legal-hex,
 .match-legal-road,
@@ -112,6 +114,8 @@
 .match-legal-hex:hover polygon { fill: #ffedba; opacity: .42; }
 .match-legal-road:hover line:first-child { stroke: #ffcf76; }
 .match-legal-vertex:hover circle:first-child { fill: #ffdf94; }
+.match-place-popup { cursor: pointer; filter: drop-shadow(0 5px 6px #073b5c9c); }
+.match-place-popup:hover rect { fill: #ffe3a7; }
 .match-legal-hex:focus-visible,
 .match-legal-road:focus-visible,
 .match-legal-vertex:focus-visible { outline: none; filter: drop-shadow(0 0 7px #fff); }
@@ -140,6 +144,12 @@
 .match-trade-banner { display: flex; align-items: center; gap: 9px; }
 .match-trade-offer { flex-direction: column; align-items: stretch; }
 .match-trade-offer > div { display: flex; align-items: center; gap: 10px; }
+.match-trade-offer .match-trade-offer-heading { color: #174365; }
+.match-trade-offer > p { margin: 0; font-size: 11px; color: #4b6877; }
+.match-trade-offer .match-trade-offer-cards { display: flex; align-items: center; gap: 5px; background: #fffdf6; border-radius: 6px; padding: 5px 7px; min-height: 42px; }
+.match-trade-offer-cards > span:first-child { width: 78px; flex: none; font-size: 9px; font-weight: 900; }
+.match-resource-badge.compact { width: 26px; height: 37px; }
+.match-trade-offer .match-trade-offer-actions { justify-content: flex-end; }
 .match-trade-offer button { border: 1px solid #b8cada; border-radius: 5px; padding: 7px 12px; background: #fff; color: #30536a; font-weight: 800; }
 .match-trade-offer button.accept { color: #fff; background: #369562; border-color: #369562; }
 .match-victim-list { display: flex; gap: 7px; flex-wrap: wrap; }
@@ -177,6 +187,7 @@
 .match-activity,
 .match-bank { background: #fff9eb; border-radius: 8px; padding: 9px 10px; }
 .match-activity p { font-size: 10px; margin: 0 0 5px; line-height: 1.35; }
+.match-activity .match-production-receipt { padding-left: 10px; color: #327353; font-weight: 700; }
 .match-bank > div { display: flex; justify-content: space-between; font-size: 12px; font-weight: 900; }
 .match-bank > div > span { display: flex; align-items: center; gap: 2px; }
 .match-bank img { display: block; width: 19px; height: 27px; object-fit: contain; }
@@ -184,6 +195,7 @@
 .match-chat h2 { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .match-chat-messages { flex: 1; min-height: 0; overflow-y: auto; font-size: 10px; }
 .match-chat-messages p { margin: 0 0 5px; line-height: 1.3; overflow-wrap: anywhere; }
+.match-chat-messages .match-chat-system { background: #e7f4e8; border-left: 2px solid #3f9d66; padding: 4px 5px; color: #32674a; }
 .match-chat form { display: flex; margin-top: 6px; }
 .match-chat input { flex: 1; min-width: 0; border: 1px solid #d1d2c7; padding: 7px 8px; border-radius: 4px 0 0 4px; color: #22465f; background: white; font-size: 11px; }
 .match-chat form button { border: 1px solid #d1d2c7; border-left: 0; background: #e7f2f1; color: #28566a; border-radius: 0 4px 4px 0; width: 33px; display: grid; place-items: center; }
@@ -226,9 +238,12 @@
 .match-action-button.build.selected { outline: 3px solid #ffe6a5; }
 .match-action-button.dev { background: #725b9b; border-color: #af9acb; }
 .match-action-button.end { background: #279764; border-color: #69c696; }
-.match-build-picks { position: absolute; right: 0; bottom: calc(100% + 18px); display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; background: #164362; border: 1px solid #5795b3; border-radius: 7px; box-shadow: 0 5px 14px #07334e7a; }
-.match-build-picks button { background: #215778; color: #d9eff7; border: 1px solid #6592a8; border-radius: 5px; padding: 5px 9px; font-size: 10px; font-weight: 700; }
-.match-build-picks button.selected { background: #f0a03e; border-color: #ffe3a0; color: #18374a; }
+.match-build-picks { position: absolute; right: 0; bottom: calc(100% + 18px); display: flex; gap: 5px; padding: 6px; background: #fff5df; border: 2px solid #315c79; border-radius: 9px; box-shadow: 0 5px 14px #07334e7a; }
+.match-build-picks button { width: 72px; height: 62px; background: #fffefa; color: #274b61; border: 1px solid #bccbd0; border-radius: 5px; padding: 3px; font-size: 9px; font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: space-between; }
+.match-build-picks button.selected { background: #dff2fc; border-color: #348dc0; box-shadow: inset 0 0 0 1px #348dc0; }
+.match-build-picks button img { width: 29px; height: 34px; object-fit: contain; }
+.match-build-picks button:nth-child(2) img { width: 14px; }
+.match-city-art { font-size: 30px; color: #4b9cda; line-height: 34px; }
 .match-target-list { position: absolute; right: 0; bottom: calc(100% + 18px); width: min(470px, 100%); padding: 8px 10px; background: #164362; border: 1px solid #5795b3; border-radius: 7px; box-shadow: 0 5px 14px #07334e7a; }
 .match-actions:has(.match-build-picks) .match-target-list { bottom: calc(100% + 65px); }
 .match-target-list summary { width: fit-content; color: #dff3f8; font-size: 11px; font-weight: 800; cursor: pointer; }
@@ -236,6 +251,43 @@
 .match-target-list button { text-align: left; border: 1px solid #6a9bb2; border-radius: 4px; background: #1f607e; color: #fff; padding: 6px 7px; font-size: 10px; line-height: 1.35; }
 .match-target-list button:hover:not(:disabled) { background: #2f83a4; }
 .match-panel-backdrop { position: fixed; inset: 0; z-index: 80; background: #062c4c9c; display: flex; justify-content: flex-end; }
+.match-trade-dock { position: absolute; z-index: 15; left: 20px; bottom: 89px; width: min(480px, calc(100% - 40px)); background: #fff7e6; color: #20455e; border: 2px solid #315c79; border-radius: 10px; box-shadow: 0 12px 26px #032e4a9e; overflow: hidden; font-size: 11px; }
+.match-trade-dock > header { height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: #153e5e; color: white; font-size: 13px; letter-spacing: .3px; }
+.match-trade-dock > header button { display: grid; place-items: center; width: 25px; height: 25px; border: 0; color: white; background: transparent; }
+.match-trade-tabs { display: flex; gap: 5px; padding: 7px 10px 0; }
+.match-trade-tabs button { border: 1px solid #b7c5c7; background: #eee7d6; color: #446377; border-radius: 5px 5px 0 0; font-size: 10px; font-weight: 800; padding: 5px 12px; }
+.match-trade-tabs button.selected { background: white; color: #1c597f; border-bottom-color: white; }
+.match-trade-content { padding: 7px 10px 10px; }
+.match-trade-content > p { margin: 1px 0 7px; color: #527084; font-size: 10px; }
+.match-trade-players { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.match-trade-players > span { font-size: 9px; font-weight: 900; margin-right: 4px; }
+.match-trade-players button { border: 1px solid #aac0c6; border-radius: 5px; background: white; color: #315773; padding: 4px 7px; font-size: 10px; font-weight: 800; }
+.match-trade-players button.selected { background: #1878a5; color: white; border-color: #1878a5; }
+.match-trade-card-row { margin: 6px 0; }
+.match-trade-card-row > strong { display: block; margin-bottom: 3px; font-size: 10px; letter-spacing: .3px; }
+.match-trade-card-row > div { display: flex; gap: 4px; }
+.match-trade-card { width: 55px; height: 64px; position: relative; border: 1px solid #b9c4bc; border-radius: 5px; background: #fff; }
+.match-trade-card.picked { border: 2px solid #2590bc; box-shadow: 0 0 0 1px #a6d9ef; }
+.match-trade-card > img { width: 100%; height: 100%; object-fit: contain; }
+.match-trade-card button { position: absolute; border: 0; display: grid; place-items: center; font-size: 12px; font-weight: 900; line-height: 1; }
+.match-trade-card-add { right: 1px; top: 1px; width: 19px; height: 19px; border-radius: 3px; background: #eff9fb; color: #126b95; }
+.match-trade-card-remove { left: 1px; bottom: 1px; width: 19px; height: 18px; border-radius: 3px; background: #fff7e7; color: #9d5840; }
+.match-trade-card b { position: absolute; right: 1px; bottom: 1px; min-width: 18px; height: 18px; border-radius: 9px; background: #1878a5; color: white; text-align: center; line-height: 18px; font-size: 10px; }
+.match-bank-pick { width: 55px; height: 73px; border: 1px solid #b9c4bc; border-radius: 5px; background: white; padding: 1px; display: flex; flex-direction: column; align-items: center; font-size: 9px; color: #466579; }
+.match-bank-pick.selected { border: 2px solid #2590bc; background: #e8f6fa; }
+.match-bank-pick img { width: 41px; height: 54px; object-fit: contain; }
+.match-trade-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; border-top: 1px solid #d8d6c9; padding-top: 8px; }
+.match-trade-footer span { font-size: 10px; color: #547080; }
+.match-trade-footer .match-primary-action { white-space: nowrap; padding: 8px 11px; }
+.match-dice-throw { position: absolute; z-index: 12; left: 50%; top: 48%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 2px; pointer-events: none; filter: drop-shadow(0 9px 12px #063f62a6); }
+.match-dice-throw img { width: 170px; height: 100px; object-fit: contain; animation: match-dice-bounce .48s ease-in-out infinite alternate; }
+.match-dice-throw span { padding: 4px 10px; color: #274a60; background: #fff6df; border-radius: 12px; font-size: 11px; font-weight: 900; }
+.match-resource-flight { position: fixed; z-index: 90; width: 36px; height: 51px; pointer-events: none; opacity: 0; animation: match-card-fly .95s cubic-bezier(.22,.72,.18,1) forwards; filter: drop-shadow(0 7px 8px #073a5a9e); }
+.match-resource-flight img { width: 100%; height: 100%; object-fit: contain; }
+.match-resource-flight strong { position: absolute; right: -7px; top: -8px; background: #1878a5; color: white; border-radius: 10px; padding: 2px 4px; font-size: 9px; }
+@keyframes match-dice-bounce { from { transform: translateY(-22px) rotate(-14deg) scale(.88); } to { transform: translateY(8px) rotate(10deg) scale(1.06); } }
+@keyframes match-card-fly { 0% { opacity: 0; transform: translate(0,0) scale(.55) rotate(-15deg); } 15% { opacity: 1; } 65% { opacity: 1; transform: translate(var(--flight-x),calc(var(--flight-y) - 56px)) scale(1.12) rotate(12deg); } 100% { opacity: 0; transform: translate(var(--flight-x),var(--flight-y)) scale(.7) rotate(0); } }
+@media (prefers-reduced-motion: reduce) { .match-resource-flight { animation-duration: .01ms; } .match-dice-throw img { animation: none; } }
 .match-panel { width: min(100%, 430px); height: 100%; background: #f8f1df; color: #21445d; box-shadow: -15px 0 35px #0c34558e; padding: 20px 22px; overflow-y: auto; }
 .match-panel header { display: flex; justify-content: space-between; align-items: center; }
 .match-panel h2 { font-size: 24px; margin: 0; }
@@ -304,6 +356,7 @@
   .match-build-picks, .match-target-list { position: static; margin-top: 8px; width: 100%; }
   .match-actions:has(.match-build-picks) .match-target-list { bottom: auto; }
   .match-trade-banner, .match-phase-card { bottom: 8px; }
+  .match-trade-dock { bottom: 8px; }
 }
 @media (max-width: 700px) {
   .match-topbar { height: 55px; gap: 8px; padding-inline: 9px; font-size: 11px; }
@@ -328,6 +381,9 @@
   .match-action-button { min-width: 0; padding: 4px; height: 45px; font-size: 10px; }
   .match-action-button svg { width: 15px; }
   .match-target-list > div { grid-template-columns: 1fr; }
+  .match-build-picks { flex-wrap: wrap; }
+  .match-build-picks button { flex: 1 1 61px; }
+  .match-trade-dock { left: 8px; width: calc(100% - 16px); max-height: calc(100% - 16px); overflow-y: auto; }
   .match-trade-banner, .match-phase-card { left: 8px; right: 8px; bottom: 8px; max-width: none; font-size: 11px; padding: 8px; }
   .match-discard-card { max-height: 85%; overflow: auto; }
   .match-error { top: auto; bottom: 8px; right: 8px; left: 8px; max-width: none; }

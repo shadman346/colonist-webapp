@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -22,6 +22,7 @@ import "./matchStyles.css";
 type Placement = "road" | "settlement" | "city" | null;
 type Panel = "trade" | "development" | null;
 type TradeTab = "bank" | "friend";
+type SelectedVertex = { id: string; city: boolean } | null;
 
 const palette: Record<string, string> = {
   coral: "#ea6e5d",
@@ -89,6 +90,8 @@ function polygonPoints(x: number, y: number, size: number) {
 }
 
 const baseAsset = (name: string) => `/assets/colonist/base/png/${name}@2x.png`;
+const pieceColor = (color: string) => ({ coral: "red", sky: "blue", mint: "mint", violet: "violet", gold: "gold", teal: "teal", "#e45242": "red", "#3495d0": "blue", "#e9ab36": "gold", "#7b57bd": "violet", "#bf8325": "gold", "#168b86": "teal" })[color.toLowerCase()] ?? "blue";
+const pieceAsset = (kind: "settlement" | "road", color: string) => `/assets/colonist/pieces/${kind}-${pieceColor(color)}.png`;
 
 function terrainAsset(terrain: Hex["terrain"]): string {
   return baseAsset(`terrain-${terrain}`);
@@ -187,9 +190,11 @@ function keyboardClick(event: React.KeyboardEvent<SVGElement>, action: () => voi
   }
 }
 
-function GameBoard({ view, placement, onCommand, busy }: {
+function GameBoard({ view, placement, selectedVertex, onSelectVertex, onCommand, busy }: {
   view: GameView;
   placement: Placement;
+  selectedVertex: SelectedVertex;
+  onSelectVertex: (selected: SelectedVertex) => void;
   onCommand: (command: MatchCommand) => void;
   busy: boolean;
 }) {
@@ -210,6 +215,7 @@ function GameBoard({ view, placement, onCommand, busy }: {
   const cityIds = active && placement === "city" ? view.legal.cityVertices : [];
   const robberIds = active ? view.legal.robberHexes : [];
   const playerColor = new Map(view.players.map((player) => [player.id, palette[player.color] ?? player.color]));
+  const playerPiece = new Map(view.players.map((player) => [player.id, player.color]));
   const hexes = Object.values(view.board.hexes);
   const vertices = view.board.vertices;
   const edges = view.board.edges;
@@ -288,10 +294,11 @@ function GameBoard({ view, placement, onCommand, busy }: {
         const [aId, bId] = edges[edgeId]!.vertexIds;
         const a = atVertex(vertices[aId]!.x, vertices[aId]!.y, size);
         const b = atVertex(vertices[bId]!.x, vertices[bId]!.y, size);
+        const length = Math.hypot(b.x - a.x, b.y - a.y) + 5;
+        const angle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI - 90;
         return (
           <g key={edgeId}>
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#704e32" strokeWidth="15" strokeLinecap="round" />
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={playerColor.get(ownerId) ?? "#fff"} strokeWidth="10" strokeLinecap="round" />
+            <image href={pieceAsset("road", playerPiece.get(ownerId) ?? "sky")} x="-7" y={-length / 2} width="14" height={length} preserveAspectRatio="none" transform={`translate(${(a.x + b.x) / 2} ${(a.y + b.y) / 2}) rotate(${angle})`} />
           </g>
         );
       })}
@@ -319,7 +326,7 @@ function GameBoard({ view, placement, onCommand, busy }: {
                 <rect x="8" y="-5" width="6" height="8" fill="#fff1d2" opacity=".8" />
               </>
             ) : (
-              <path d="M-15 14V-4L0-17L15-4V14Z" fill={color} stroke="#fff1d2" strokeWidth="3" strokeLinejoin="round" />
+              <image href={pieceAsset("settlement", playerPiece.get(building.ownerId) ?? "sky")} x="-17" y="-20" width="34" height="40" />
             )}
           </g>
         );
@@ -331,18 +338,29 @@ function GameBoard({ view, placement, onCommand, busy }: {
         const action = () => onCommand(city
           ? { type: "build-city", vertexId }
           : { type: view.phase === "setup-settlement" ? "place-setup-settlement" : "build-settlement", vertexId });
+        const selected = selectedVertex?.id === vertexId && selectedVertex.city === city;
+        const popX = point.x > 700 ? point.x - 151 : point.x + 19;
+        const popY = point.y > 570 ? point.y - 72 : point.y - 48;
         return (
-          <g key={vertexId} className="match-legal-vertex" role="button" tabIndex={0} aria-label={vertexLabel(view, vertexId, city ? "Build city" : "Place settlement")} onClick={() => !busy && action()} onKeyDown={(event) => keyboardClick(event, () => !busy && action())}>
-            <circle cx={point.x} cy={point.y} r="16" fill="#fff7da" stroke="#d48637" strokeWidth="4" />
-            <path d={`M${point.x - 6} ${point.y}h12M${point.x} ${point.y - 6}v12`} stroke="#b66f26" strokeWidth="3" strokeLinecap="round" />
-            <circle cx={point.x} cy={point.y} r="24" fill="transparent" />
+          <g key={vertexId} className="match-legal-vertex">
+            <g role="button" tabIndex={0} aria-label={vertexLabel(view, vertexId, city ? "Select city location" : "Select settlement location")} onClick={() => !busy && onSelectVertex({ id: vertexId, city })} onKeyDown={(event) => keyboardClick(event, () => !busy && onSelectVertex({ id: vertexId, city }))}>
+              <circle cx={point.x} cy={point.y} r={selected ? 12 : 10} fill="#fff7da" stroke={selected ? "#f6a13c" : "#d48637"} strokeWidth="3" />
+              <circle cx={point.x} cy={point.y} r="3" fill="#b66f26" />
+              <circle cx={point.x} cy={point.y} r="19" fill="transparent" />
+            </g>
+            {selected && <g className="match-place-popup" transform={`translate(${popX} ${popY})`} role="button" tabIndex={0} aria-label={city ? "Confirm city placement" : "Confirm settlement placement"} onClick={() => !busy && action()} onKeyDown={(event) => keyboardClick(event, () => !busy && action())}>
+              <rect width="132" height="57" rx="9" fill="#fff6df" stroke="#214864" strokeWidth="2" />
+              {city ? <path d="M9 43V20L20 10L31 20V43ZM31 43V15L43 5L55 15V43Z" fill={palette[view.players.find((player) => player.id === view.self.id)?.color ?? "sky"]} stroke="#163d59" strokeWidth="2" /> : <image href={pieceAsset("settlement", view.players.find((player) => player.id === view.self.id)?.color ?? "sky")} x="9" y="6" width="43" height="45" />}
+              <text x="57" y="23" fill="#20445f" fontSize="12" fontWeight="800">{city ? "Build city" : "Place house"}</text>
+              <text x="57" y="41" fill="#577184" fontSize="10">Click to confirm</text>
+            </g>}
           </g>
         );
       })}
       {view.lastRoll && (
         <g className="match-roll-token">
           <rect x="700" y="558" width="160" height="53" rx="12" fill="#fff4dc" stroke="#b3864b" strokeWidth="3" />
-          <text x="780" y="592" textAnchor="middle" fontSize="20" fontWeight="800" fill="#274457">⚄ {view.lastRoll[0] + view.lastRoll[1]}</text>
+          <text x="780" y="592" textAnchor="middle" fontSize="20" fontWeight="800" fill="#274457">{view.lastRoll[0]} + {view.lastRoll[1]} = {view.lastRoll[0] + view.lastRoll[1]}</text>
         </g>
       )}
     </svg>
@@ -355,6 +373,11 @@ function ResourceBadge({ resource, count, compact = false }: { resource: Resourc
     <img src={resourceCardAsset(resource)} alt={`${info.label} resource card`} />
     <strong>{count}</strong>
   </span>;
+}
+
+function DieFace({ value }: { value: number }) {
+  const marks: Record<number, number[]> = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  return <span className="match-die-face" aria-label={`${value} on a die`}>{marks[value]?.map((position) => <i key={position} style={{ gridColumn: position % 3 + 1, gridRow: Math.floor(position / 3) + 1 }} />)}</span>;
 }
 
 function CountPicker({ title, counts, onChange, maxFor }: {
@@ -391,8 +414,16 @@ function bankRatio(view: GameView, give: Resource): number {
   return ratio;
 }
 
-function TradePanel({ view, onCommand, busy }: { view: GameView; onCommand: (command: MatchCommand) => void; busy: boolean }) {
-  const [tab, setTab] = useState<TradeTab>("bank");
+function TradeCardRow({ label, counts, maxFor, onChange }: { label: string; counts: ResourceCounts; maxFor: (resource: Resource) => number; onChange: (resource: Resource, value: number) => void }) {
+  return <div className="match-trade-card-row"><strong>{label}</strong><div>{RESOURCES.map((resource) => <div className={`match-trade-card ${counts[resource] ? "picked" : ""}`} key={resource}>
+    <img src={resourceCardAsset(resource)} alt={`${resources[resource].label} card`} />
+    <button type="button" className="match-trade-card-add" aria-label={`Add ${resources[resource].label} to ${label}`} disabled={counts[resource] >= maxFor(resource)} onClick={() => onChange(resource, counts[resource] + 1)}>+</button>
+    {counts[resource] > 0 && <><b>{counts[resource]}</b><button type="button" className="match-trade-card-remove" aria-label={`Remove ${resources[resource].label} from ${label}`} onClick={() => onChange(resource, counts[resource] - 1)}>−</button></>}
+  </div>)}</div></div>;
+}
+
+function TradePanel({ view, onCommand, onClose, busy, initialTab }: { view: GameView; onCommand: (command: MatchCommand) => void; onClose: () => void; busy: boolean; initialTab: TradeTab }) {
+  const [tab, setTab] = useState<TradeTab>(initialTab);
   const [give, setGive] = useState<Resource>("wood");
   const [receive, setReceive] = useState<Resource>("brick");
   const [friendId, setFriendId] = useState(view.players.find((player) => player.id !== view.self.id)?.id ?? "");
@@ -407,44 +438,28 @@ function TradePanel({ view, onCommand, busy }: { view: GameView; onCommand: (com
     setter((current) => ({ ...current, [resource]: value }));
   };
   return (
-    <div className="match-panel-body">
-      <div className="match-tab-row">
-        <button className={tab === "bank" ? "selected" : ""} onClick={() => setTab("bank")} type="button">Bank & ports</button>
+    <section className="match-trade-dock" role="dialog" aria-label="Trade resources">
+      <header><strong>TRADE {tab === "friend" ? "WITH FRIENDS" : "WITH BANK"}</strong><button type="button" aria-label="Close trade" onClick={onClose}><X size={17} /></button></header>
+      <div className="match-trade-tabs">
         <button className={tab === "friend" ? "selected" : ""} onClick={() => setTab("friend")} type="button">Friends</button>
+        <button className={tab === "bank" ? "selected" : ""} onClick={() => setTab("bank")} type="button">Bank & ports</button>
       </div>
       {tab === "bank" ? (
-        <>
-          <p>Exchange matching resources at 4:1, or use a port you own.</p>
-          <div className="match-select-row">
-            <label>Give
-              <select value={actualGive ?? ""} disabled={!actualGive} onChange={(event) => setGive(event.target.value as Resource)}>
-                {availableGive.map((resource) => <option key={resource} value={resource}>{resources[resource].label} ({bankRatio(view, resource)} cards)</option>)}
-              </select>
-            </label>
-            <span>→</span>
-            <label>Receive
-              <select value={actualReceive ?? ""} disabled={!actualReceive} onChange={(event) => setReceive(event.target.value as Resource)}>
-                {receiveOptions.map((resource) => <option key={resource} value={resource}>{resources[resource].label}</option>)}
-              </select>
-            </label>
-          </div>
-          <button className="match-primary-action" type="button" disabled={!actualGive || !actualReceive || busy} onClick={() => onCommand({ type: "bank-trade", give: actualGive!, receive: actualReceive! })}>Trade with bank</button>
-          {!availableGive.length && <p className="match-muted">You need enough matching cards for a bank trade.</p>}
-        </>
+        <div className="match-trade-content">
+          <p>Choose cards to give · a port lowers the exchange rate.</p>
+          <div className="match-trade-card-row"><strong>GIVE {actualGive ? bankRatio(view, actualGive) : 4} MATCHING CARDS</strong><div>{RESOURCES.map((resource) => <button key={resource} type="button" className={`match-bank-pick ${actualGive === resource ? "selected" : ""}`} disabled={!availableGive.includes(resource)} onClick={() => setGive(resource)}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><span>{bankRatio(view, resource)}:1</span></button>)}</div></div>
+          <div className="match-trade-card-row"><strong>RECEIVE 1 CARD</strong><div>{RESOURCES.map((resource) => <button key={resource} type="button" className={`match-bank-pick ${actualReceive === resource ? "selected" : ""}`} disabled={resource === actualGive || !view.bank[resource]} onClick={() => setReceive(resource)}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><span>{view.bank[resource]} left</span></button>)}</div></div>
+          <div className="match-trade-footer"><span>{actualGive ? `${bankRatio(view, actualGive)} ${resources[actualGive].label} → 1 ${actualReceive ? resources[actualReceive].label : "card"}` : "Collect enough matching cards to trade."}</span><button className="match-primary-action" type="button" disabled={!actualGive || !actualReceive || busy} onClick={() => onCommand({ type: "bank-trade", give: actualGive!, receive: actualReceive! })}>Trade with bank</button></div>
+        </div>
       ) : (
-        <>
-          <p>Offer cards to one friend. Their hand stays private until they accept.</p>
-          <label className="match-friend-select">Offer to
-            <select value={friendId} onChange={(event) => setFriendId(event.target.value)}>
-              {view.players.filter((player) => player.id !== view.self.id).map((player) => <option value={player.id} key={player.id}>{player.name}</option>)}
-            </select>
-          </label>
-          <CountPicker title="You give" counts={offerGive} onChange={(resource, amount) => setCount("give", resource, amount)} maxFor={(resource) => view.self.resources[resource]} />
-          <CountPicker title="You want" counts={offerWant} onChange={(resource, amount) => setCount("want", resource, amount)} maxFor={() => 19} />
-          <button className="match-primary-action" type="button" disabled={!view.legal.canOfferTrade || !friendId || !sumCounts(offerGive) || !sumCounts(offerWant) || !RESOURCES.every((resource) => offerGive[resource] <= view.self.resources[resource]) || busy} onClick={() => onCommand({ type: "offer-trade", toPlayerId: friendId, give: offerGive, want: offerWant })}>Send offer</button>
-        </>
+        <div className="match-trade-content">
+          <div className="match-trade-players"><span>OFFER TO</span>{view.players.filter((player) => player.id !== view.self.id).map((player) => <button key={player.id} type="button" className={friendId === player.id ? "selected" : ""} onClick={() => setFriendId(player.id)}>{player.name}</button>)}</div>
+          <TradeCardRow label="YOU GIVE" counts={offerGive} onChange={(resource, amount) => setCount("give", resource, amount)} maxFor={(resource) => view.self.resources[resource]} />
+          <TradeCardRow label="YOU WANT" counts={offerWant} onChange={(resource, amount) => setCount("want", resource, amount)} maxFor={() => 19} />
+          <div className="match-trade-footer"><span>Cards move only after your friend accepts.</span><button className="match-primary-action" type="button" disabled={!view.legal.canOfferTrade || !friendId || !sumCounts(offerGive) || !sumCounts(offerWant) || !RESOURCES.every((resource) => offerGive[resource] <= view.self.resources[resource]) || busy} onClick={() => onCommand({ type: "offer-trade", toPlayerId: friendId, give: offerGive, want: offerWant })}>Send offer</button></div>
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -523,10 +538,15 @@ function PendingTrade({ view, onCommand, busy }: { view: GameView; onCommand: (c
   const offered = RESOURCES.filter((resource) => trade.give[resource]).map((resource) => `${trade.give[resource]} ${resources[resource].label}`).join(", ");
   const wanted = RESOURCES.filter((resource) => trade.want[resource]).map((resource) => `${trade.want[resource]} ${resources[resource].label}`).join(", ");
   const recipient = view.self.id === trade.toPlayerId;
+  const offeredCounts = recipient ? trade.give : trade.want;
+  const payingCounts = recipient ? trade.want : trade.give;
   return (
     <div className="match-trade-banner match-trade-offer">
-      <div><ShoppingBasket size={20} /><strong>{from} offers {offered} to {to} for {wanted}</strong></div>
-      <div>
+      <div className="match-trade-offer-heading"><ShoppingBasket size={20} /><strong>{recipient ? `${from} sent you an offer` : `Waiting for ${to}`}</strong></div>
+      <p>{from} offers {offered} for {wanted}.</p>
+      <div className="match-trade-offer-cards"><span>{recipient ? "YOU RECEIVE" : "YOU WANT"}</span>{RESOURCES.filter((resource) => offeredCounts[resource]).map((resource) => <ResourceBadge key={resource} resource={resource} count={offeredCounts[resource]} compact />)}</div>
+      <div className="match-trade-offer-cards"><span>YOU GIVE</span>{RESOURCES.filter((resource) => payingCounts[resource]).map((resource) => <ResourceBadge key={resource} resource={resource} count={payingCounts[resource]} compact />)}</div>
+      <div className="match-trade-offer-actions">
         {recipient ? (
           <>
             <button type="button" onClick={() => onCommand({ type: "reject-trade", tradeId: trade.id })} disabled={!view.legal.canRejectTrade || busy}>Decline</button>
@@ -592,6 +612,15 @@ function actionMessage(view: GameView, action: GameView["recentActions"][number]
   return `${name} ${label}.`;
 }
 
+function productionMessages(view: GameView, action: GameView["recentActions"][number]): string[] {
+  if (!action.production) return [];
+  return Object.entries(action.production).map(([playerId, counts]) => {
+    const name = view.players.find((player) => player.id === playerId)?.name ?? "A player";
+    const cards = RESOURCES.filter((resource) => counts[resource] > 0).map((resource) => `${counts[resource]} ${resources[resource].label}`).join(", ");
+    return `${name} received ${cards}.`;
+  });
+}
+
 function PanelShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div className="match-panel-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -615,7 +644,12 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [placement, setPlacement] = useState<Placement>(null);
+  const [selectedVertex, setSelectedVertex] = useState<SelectedVertex>(null);
+  const [buildMenuOpen, setBuildMenuOpen] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
+  const [tradeInitialTab, setTradeInitialTab] = useState<TradeTab>("friend");
+  const [rolling, setRolling] = useState(false);
+  const [flights, setFlights] = useState<Array<{ id: string; resource: Resource; count: number; x: number; y: number; dx: number; dy: number; delay: number }>>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -623,6 +657,8 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const expiryInFlight = useRef(false);
   const lastExpiryAttempt = useRef(0);
+  const seenActionNumber = useRef<number | null>(null);
+  const flightTimeout = useRef<number | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -654,23 +690,51 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
 
   useEffect(() => {
     setPlacement(null);
+    setSelectedVertex(null);
+    setBuildMenuOpen(false);
     setPanel(null);
   }, [view?.phase, view?.activePlayerId]);
+
+  useEffect(() => {
+    if (!view) return;
+    const latest = view.recentActions.at(-1)?.number ?? 0;
+    if (seenActionNumber.current === null) { seenActionNumber.current = latest; return; }
+    const freshRolls = view.recentActions.filter((action) => action.number > seenActionNumber.current! && action.type === "roll");
+    seenActionNumber.current = Math.max(seenActionNumber.current, latest);
+    const cards = freshRolls.flatMap((action) => RESOURCES.filter((resource) => (action.production?.[view.self.id]?.[resource] ?? 0) > 0).map((resource, index) => ({ action, resource, index })));
+    if (!cards.length) return;
+    const hand = document.querySelector(".match-hand-cards")?.getBoundingClientRect();
+    if (!hand) return;
+    const next = cards.map(({ action, resource, index }, order) => {
+      const bank = document.querySelector(`[data-bank-resource="${resource}"]`)?.getBoundingClientRect();
+      const x = bank ? bank.left + bank.width / 2 - 18 : window.innerWidth - 310;
+      const y = bank ? bank.top + bank.height / 2 - 25 : 230;
+      return { id: `${action.number}-${resource}`, resource, count: action.production![view.self.id]![resource], x, y, dx: hand.left + Math.min(32 + order * 38, hand.width - 30) - x, dy: hand.top + 4 - y, delay: index * 90 + order * 110 };
+    });
+    setFlights(next);
+    if (flightTimeout.current !== null) window.clearTimeout(flightTimeout.current);
+    flightTimeout.current = window.setTimeout(() => setFlights([]), 1650);
+  }, [view]);
+
+  useEffect(() => () => { if (flightTimeout.current !== null) window.clearTimeout(flightTimeout.current); }, []);
 
   async function command(item: MatchCommand) {
     if (busy) return;
     setBusy(true);
+    if (item.type === "roll") setRolling(true);
     setActionError("");
     try {
       const next = await client.command(item);
       setView(next);
       setPlacement(null);
+      setSelectedVertex(null);
       if (item.type !== "bank-trade" && item.type !== "buy-development") setPanel(null);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "That action could not be completed.");
       void client.load().then(setView).catch(() => undefined);
     } finally {
       setBusy(false);
+      if (item.type === "roll") window.setTimeout(() => setRolling(false), 550);
     }
   }
 
@@ -717,13 +781,15 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
         <section className="match-board-area">
           <div className="match-phase-banner">
             <div><span className="match-phase-kicker">{isLocalPreview ? "LOCAL PREVIEW · " : ""}{view.phase === "completed" ? "GAME OVER" : myTurn ? "YOUR TURN" : `${active?.name.toUpperCase() ?? "FRIEND"}'S TURN`}</span><h1>{phaseLabels[view.phase]}</h1><p>{remainingSeconds === 0 ? "Time is up. Advancing the match…" : phaseMessage(view, placement)}</p></div>
-            {view.lastRoll && <span className="match-dice-result"><Dice5 size={24} /> {view.lastRoll[0]} + {view.lastRoll[1]} = {view.lastRoll[0] + view.lastRoll[1]}</span>}
+            {view.lastRoll && <span className="match-dice-result"><DieFace value={view.lastRoll[0]} /><DieFace value={view.lastRoll[1]} /><strong>= {view.lastRoll[0] + view.lastRoll[1]}</strong></span>}
           </div>
           {targets.length > 0 && <a className="match-skip-targets" href="#match-target-picker">Skip to legal positions</a>}
-          <div className="match-board-wrap"><GameBoard view={view} placement={placement} onCommand={(item) => void command(item)} busy={busy} /></div>
+          <div className="match-board-wrap"><GameBoard view={view} placement={placement} selectedVertex={selectedVertex} onSelectVertex={setSelectedVertex} onCommand={(item) => void command(item)} busy={busy} /></div>
+          {rolling && <div className="match-dice-throw" role="status" aria-label="Rolling two dice"><img src="/assets/colonist/pieces/dice-pair.png" alt="Two dice rolling" /><span>Rolling…</span></div>}
           {actionError && <div className="match-error" role="alert">{actionError}<button type="button" onClick={() => setActionError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
           {busy && <div className="match-saving" role="status">Saving your move…</div>}
           <PendingTrade view={view} onCommand={(item) => void command(item)} busy={busy} />
+          {panel === "trade" && <TradePanel view={view} initialTab={tradeInitialTab} onCommand={(item) => void command(item)} onClose={() => setPanel(null)} busy={busy} />}
           {view.phase === "discard" && <DiscardPanel view={view} onCommand={(item) => void command(item)} busy={busy} />}
           {view.phase === "robber-steal" && myTurn && <div className="match-phase-card"><strong>Take one random card from:</strong><div className="match-victim-list">{view.legal.robberVictimIds.map((id) => { const player = view.players.find((candidate) => candidate.id === id); return <button key={id} type="button" disabled={busy} onClick={() => void command({ type: "choose-robber-victim", victimId: id })}><span style={{ background: palette[player?.color ?? ""] ?? "#ddd" }}>{player?.name.charAt(0)}</span>{player?.name}</button>; })}</div></div>}
         </section>
@@ -735,9 +801,9 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
               <strong className="match-score">{player.id === view.self.id ? view.self.totalPoints : player.publicPoints}<small>VP</small></strong>
             </div>)}
           </div></div>
-          <div className="match-sidebar-section match-activity"><h2>ACTIVITY</h2>{view.recentActions.length ? [...view.recentActions].reverse().map((action) => <p key={action.number}>{actionMessage(view, action)}</p>) : <p>Game started. Build your first settlements and roads.</p>}{view.longestRoadHolderId && <p>Longest Road: {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</p>}{view.largestArmyHolderId && <p>Largest Army: {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</p>}</div>
-          <div className="match-sidebar-section match-bank"><h2>BANK & PORTS</h2><div>{RESOURCES.map((resource) => <span key={resource} title={resources[resource].label}><img src={resourceCardAsset(resource)} alt="" />{view.bank[resource]}</span>)}</div></div>
-          <div className="match-chat"><h2><MessageCircle size={16} /> CHAT</h2><div className="match-chat-messages">{latestChat.length ? latestChat.map((line) => <p key={line.id}><strong>{line.name}:</strong> {line.text}</p>) : <p>Talk strategy with your friends.</p>}</div><form onSubmit={(event) => void sendMessage(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={240} aria-label="Game chat message" placeholder="Send a message" /><button type="submit" aria-label="Send message" disabled={!chatDraft.trim() || chatBusy}><Send size={17} /></button></form></div>
+          <div className="match-sidebar-section match-activity"><h2>ACTIVITY</h2>{view.recentActions.length ? [...view.recentActions].reverse().map((action) => <div key={action.number}><p>{actionMessage(view, action)}</p>{productionMessages(view, action).map((receipt) => <p className="match-production-receipt" key={receipt}>{receipt}</p>)}</div>) : <p>Game started. Build your first settlements and roads.</p>}{view.longestRoadHolderId && <p>Longest Road: {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</p>}{view.largestArmyHolderId && <p>Largest Army: {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</p>}</div>
+          <div className="match-sidebar-section match-bank"><h2>BANK & PORTS</h2><div>{RESOURCES.map((resource) => <span key={resource} data-bank-resource={resource} title={resources[resource].label}><img src={resourceCardAsset(resource)} alt="" />{view.bank[resource]}</span>)}</div></div>
+          <div className="match-chat"><h2><MessageCircle size={16} /> CHAT</h2><div className="match-chat-messages">{view.recentActions.filter((action) => action.type === "roll").slice(-3).flatMap((action) => productionMessages(view, action).map((message) => <p className="match-chat-system" key={`${action.number}-${message}`}>{message}</p>))}{latestChat.length ? latestChat.map((line) => <p key={line.id}><strong>{line.name}:</strong> {line.text}</p>) : <p>Talk strategy with your friends.</p>}</div><form onSubmit={(event) => void sendMessage(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={240} aria-label="Game chat message" placeholder="Send a message" /><button type="submit" aria-label="Send message" disabled={!chatDraft.trim() || chatBusy}><Send size={17} /></button></form></div>
         </aside>
       </div>
 
@@ -745,25 +811,28 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
         <div className="match-hand"><span className="match-toolbar-label">YOUR HAND · {handSize} CARDS</span><div className="match-hand-cards">{handSize ? RESOURCES.filter((resource) => view.self.resources[resource] > 0).map((resource) => <ResourceBadge key={resource} resource={resource} count={view.self.resources[resource]} />) : <span className="match-empty-hand">Your first resources arrive after your second settlement.</span>}</div></div>
         <div className="match-actions"><span className="match-toolbar-label">ACTIONS</span><div className="match-action-row">
           <button className="match-action-button roll" type="button" disabled={!view.legal.canRoll || busy} onClick={() => void command({ type: "roll" })}><Dice5 size={19} /> Roll dice</button>
-          <button className="match-action-button trade" type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} onClick={() => { setPlacement(null); setPanel("trade"); }}><ShoppingBasket size={19} /> Trade</button>
-          <button className={`match-action-button build ${placement ? "selected" : ""}`} type="button" disabled={!canBuild || busy} onClick={() => { setPanel(null); setPlacement(placement ? null : view.legal.roadEdges.length ? "road" : view.legal.settlementVertices.length ? "settlement" : "city"); }}><Hammer size={19} /> Build</button>
+          <button className="match-action-button trade" type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} onClick={() => { setPlacement(null); setBuildMenuOpen(false); setTradeInitialTab("friend"); setPanel("trade"); }}><ShoppingBasket size={19} /> Trade</button>
+          <button className={`match-action-button build ${buildMenuOpen ? "selected" : ""}`} type="button" disabled={!canBuild || busy} onClick={() => { setPanel(null); setBuildMenuOpen(!buildMenuOpen); if (buildMenuOpen) { setPlacement(null); setSelectedVertex(null); } }}><Hammer size={19} /> Build</button>
           <button className="match-action-button dev" type="button" disabled={!(view.legal.canBuyDevelopment || view.self.developmentCards.length) || busy} onClick={() => { setPlacement(null); setPanel("development"); }}><Sparkles size={18} /> Dev cards</button>
           {view.legal.canRequestSpecialBuild && <button className={`match-action-button build ${view.legal.specialBuildRequested ? "selected" : ""}`} type="button" disabled={busy} onClick={() => void command({ type: "request-special-build", requested: !view.legal.specialBuildRequested })}>{view.legal.specialBuildRequested ? "Cancel build request" : "Request Special Build"}</button>}
           {view.legal.canPassSpecialBuild && <button className="match-action-button end" type="button" disabled={busy} onClick={() => void command({ type: "pass-special-build" })}><Check size={18} /> Finish build</button>}
           <button className="match-action-button end" type="button" disabled={!view.legal.canEndTurn || busy} onClick={() => void command({ type: "end-turn" })}><Check size={18} /> End turn</button>
         </div>
-        {placement && <div className="match-build-picks">
-          {view.legal.roadEdges.length > 0 && <button type="button" className={placement === "road" ? "selected" : ""} onClick={() => setPlacement("road")}>Road · 1 wood, 1 brick</button>}
-          {view.legal.settlementVertices.length > 0 && <button type="button" className={placement === "settlement" ? "selected" : ""} onClick={() => setPlacement("settlement")}>Settlement · wood, brick, wool, grain</button>}
-          {view.legal.cityVertices.length > 0 && <button type="button" className={placement === "city" ? "selected" : ""} onClick={() => setPlacement("city")}>City · 2 grain, 3 ore</button>}
+        {buildMenuOpen && <div className="match-build-picks" role="group" aria-label="Choose a game piece">
+          <button type="button" className={placement === "settlement" ? "selected" : ""} disabled={!view.legal.settlementVertices.length} onClick={() => { setPlacement("settlement"); setSelectedVertex(null); }}><img src={pieceAsset("settlement", view.players.find((player) => player.id === view.self.id)?.color ?? "sky")} alt="" /><span>House</span></button>
+          <button type="button" className={placement === "road" ? "selected" : ""} disabled={!view.legal.roadEdges.length} onClick={() => { setPlacement("road"); setSelectedVertex(null); }}><img src={pieceAsset("road", view.players.find((player) => player.id === view.self.id)?.color ?? "sky")} alt="" /><span>Road</span></button>
+          <button type="button" className={placement === "city" ? "selected" : ""} disabled={!view.legal.cityVertices.length} onClick={() => { setPlacement("city"); setSelectedVertex(null); }}><span className="match-city-art">▥</span><span>City</span></button>
+          <button type="button" disabled={!view.legal.bankTradeGive.length} onClick={() => { setPlacement(null); setBuildMenuOpen(false); setTradeInitialTab("bank"); setPanel("trade"); }}><img src={resourceCardAsset("wood")} alt="" /><span>Resources</span></button>
+          <button type="button" disabled={view.phase !== "robber-move"} onClick={() => { setPlacement(null); setBuildMenuOpen(false); }}><img src={baseAsset("icon-robber")} alt="" /><span>Robber</span></button>
         </div>}
         {targets.length > 0 && <details className="match-target-list">
           <summary id="match-target-picker">Choose from {targets.length} legal {targets.length === 1 ? "position" : "positions"}</summary>
-          <div>{targets.map((target) => <button key={target.id} type="button" disabled={busy} onClick={() => void command(target.command)}>{target.label}</button>)}</div>
+          <div>{targets.map((target) => <button key={target.id} type="button" disabled={busy} onClick={() => { if ("vertexId" in target.command) setSelectedVertex({ id: target.command.vertexId, city: target.command.type === "build-city" }); else void command(target.command); }}>{target.label}</button>)}</div>
         </details>}
         </div>
       </div>
-      {panel && <PanelShell title={panel === "trade" ? "Trade" : "Development cards"} onClose={() => setPanel(null)}>{panel === "trade" ? <TradePanel view={view} onCommand={(item) => void command(item)} busy={busy} /> : <DevelopmentPanel view={view} onCommand={(item) => void command(item)} busy={busy} />}</PanelShell>}
+      {flights.map((flight) => <div className="match-resource-flight" key={flight.id} style={{ left: flight.x, top: flight.y, "--flight-x": `${flight.dx}px`, "--flight-y": `${flight.dy}px`, animationDelay: `${flight.delay}ms` } as CSSProperties}><img src={resourceCardAsset(flight.resource)} alt="" /><strong>+{flight.count}</strong></div>)}
+      {panel === "development" && <PanelShell title="Development cards" onClose={() => setPanel(null)}><DevelopmentPanel view={view} onCommand={(item) => void command(item)} busy={busy} /></PanelShell>}
       {view.phase === "completed" && <div className="match-complete"><div><Sparkles size={38} /><h2>{view.winnerId === view.self.id ? "You won!" : `${view.players.find((player) => player.id === view.winnerId)?.name ?? "A friend"} won!`}</h2><p>Final score: {view.self.totalPoints} of {view.victoryPointsToWin} points</p><button type="button" onClick={onBack}>Back to room</button></div></div>}
     </div>
   );
