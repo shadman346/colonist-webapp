@@ -60,6 +60,7 @@ describe('Base board', () => {
     expect(Object.keys(board.edges)).toHaveLength(72);
     expect(board.ports).toHaveLength(9);
     expect(new Set(board.ports.flatMap((port) => port.vertexIds)).size).toBe(18);
+    expect(createBaseBoard('another-seed').ports.map((port) => port.edgeId)).toEqual(board.ports.map((port) => port.edgeId));
     expect(Object.values(board.hexes).filter((hex) => hex.terrain === 'desert')).toHaveLength(1);
     expect(Object.values(board.hexes).filter((hex) => hex.number === 6)).toHaveLength(2);
     expect(Object.values(board.hexes).filter((hex) => hex.number === 8)).toHaveLength(2);

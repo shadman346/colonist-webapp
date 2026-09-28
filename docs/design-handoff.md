@@ -34,12 +34,12 @@ The desktop prototype links opening → active turn, seven → discard → robbe
 
 - Desktop room frames are 1280 × 720. The left rail is 130 px; players, settings/invite, and chat occupy three panels. The host's Start action or guest's Ready action stays visible at the bottom.
 - Phone room frames are 390 × 844. Players/settings switch between views, with invitation and Ready/Start actions kept reachable.
-- The active match frame is 1280 × 720: blue board stage, 19 terrain hexes, 18 number tokens, coast and ports, player/activity rail, and bottom resource/action tray. It is built from editable Figma instances and vectors, with no embedded screenshot fills. Phone match frames keep the board in context and put forced choices in bottom sheets.
-- Component sets: Room Button `36:14`, Room Seat `36:51`, Room Option Tile `36:72`, Board Terrain Hex `52:53`, Resource Card `53:23`, and Player HUD Row `53:24`.
+- The active match frame is 1280 × 720: 19 reference-aligned terrain hexes, 18 screenshot-derived number plaques, nine harbor boats with paired piers, player/activity rail, and a 70 px resource/action tray. The board is a transparent imported image assembled outside Figma from traced source artwork. State-specific pieces, legal targets, prompts, and the surrounding interface remain editable. The 390 × 844 phone screens use the same imported art at a board crop scale.
+- Component sets: Room Button `36:14`, Room Seat `36:51`, Room Option Tile `36:72`, Board Terrain Hex `52:53`, Resource Card `53:23`, and Player HUD Row `53:24`. The terrain and resource components use official image fills. Six imported harbor boat components start at `67:2914`; ten number plaque components start at `67:2920`.
 - Type is Open Sans. Production room colors come from collection `VariableCollectionId:35:4`; board colors from `VariableCollectionId:51:637`.
 
 ## Source and implementation boundary
 
-Reference pages **07 Exact Colonist References** and **08 Room, Invite & Join References** hold dated screenshots and video stills used to measure the interface. Their source files and provenance remain under the sibling `analysis/reference/` directory. The playable app uses its own code-drawn terrain, pieces, cards, and interface elements; reference screenshots are not in the deployed bundle. See [asset-manifest.md](asset-manifest.md).
+Reference pages **07 Exact Colonist References** and **08 Room, Invite & Join References** hold dated screenshots and video stills used to measure the interface. Source screenshots, 480 individual art crops, and extraction provenance remain under sibling `analysis/reference/` and `analysis/tile-assets/`. The playable app loads copied Colonist terrain, card, port, plaque, and robber art from its public asset folder; the Figma-only board composition is not in the deployed bundle. See [asset-manifest.md](asset-manifest.md).
 
 The Figma screens show visual states and intended interactions. The app's room, match, and responsive behavior are verified separately through its browser flow and tests. A Figma prototype transition is not evidence that an equivalent server command has completed.

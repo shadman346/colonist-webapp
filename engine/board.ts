@@ -131,24 +131,23 @@ export function createBaseBoard(seed: string): Board {
     if (hex.number === null) hex.number = ordinaryNumbers[numberIndex++]!;
   });
 
-  const coastalEdges = Object.values(edges)
-    .filter((edge) => edge.hexIds.length === 1)
-    .sort((left, right) => {
-      const midpoint = (edge: Edge) => {
-        const [a, b] = edge.vertexIds.map((id) => vertices[id]!);
-        return Math.atan2(a.y + b.y, Math.sqrt(3) * (a.x + b.x));
-      };
-      return midpoint(left) - midpoint(right);
-    });
-  if (coastalEdges.length !== 30) throw new Error('Unexpected Base coastline');
-  const offset = Math.floor(random() * coastalEdges.length);
-  const portTypes = shuffled(PORT_RESOURCES, random);
-  const ports: Port[] = [];
-  for (let i = 0; i < 9; i += 1) {
-    const selected = coastalEdges[(Math.floor(i * coastalEdges.length / 9) + offset) % coastalEdges.length]!;
-    const resource = portTypes[i]!;
-    ports.push({ edgeId: selected.id, vertexIds: selected.vertexIds, ratio: resource === null ? 3 : 2, resource });
+  // The nine harbor locations are fixed on the Base coastline. Only their trade types vary.
+  // Ordered clockwise from the northwest shore in the Colonist Base reference board.
+  const portLocations: Array<[HexId, number]> = [
+    ['h:0,-2', 5], ['h:1,-2', 0], ['h:2,-1', 0],
+    ['h:2,0', 1], ['h:1,1', 2], ['h:-1,2', 2],
+    ['h:-2,2', 3], ['h:-2,1', 4], ['h:-1,-1', 4],
+  ];
+  if (Object.values(edges).filter((edge) => edge.hexIds.length === 1).length !== 30) {
+    throw new Error('Unexpected Base coastline');
   }
+  const portTypes = shuffled(PORT_RESOURCES, random);
+  const ports: Port[] = portLocations.map(([hexId, corner], i) => {
+    const selected = edges[hexes[hexId]!.edgeIds[corner]!]!;
+    if (selected.hexIds.length !== 1) throw new Error('Port must be on the coast');
+    const resource = portTypes[i]!;
+    return { edgeId: selected.id, vertexIds: selected.vertexIds, ratio: resource === null ? 3 : 2, resource };
+  });
   if (new Set(ports.flatMap((port) => port.vertexIds)).size !== 18) {
     throw new Error('Ports must occupy distinct coastline vertices');
   }

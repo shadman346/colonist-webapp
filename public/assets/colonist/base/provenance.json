@@ -1,0 +1,202 @@
+[
+  {
+    "asset": "card-wood.svg",
+    "kind": "resource-lumber",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_lumber.cf22f8083cf89c2a29e7.svg",
+    "sha256": "53999239785cf1c041a6c1c65654c38cd581b9354b821a6882c8f07a92646856",
+    "bytes": 5637,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-brick.svg",
+    "kind": "resource-brick",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_brick.5950ea07a7ea01bc54a5.svg",
+    "sha256": "c3ff527cd1c5e9469c9df50c442de8329699564d8e5ed5f8030da2fbddb8e8e4",
+    "bytes": 6997,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-wool.svg",
+    "kind": "resource-wool",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_wool.17a6dea8d559949f0ccc.svg",
+    "sha256": "7ee8a0e3749a6e9f1837dd00ecc6d9bb92b74d406e6c839c11527510fa69bae7",
+    "bytes": 25110,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-grain.svg",
+    "kind": "resource-grain",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_grain.09c9d82146a64bce69b5.svg",
+    "sha256": "af37a9a0d98fc41ce7067b0782e4ae2a771d839b6aa765a9a78c9a60669f294c",
+    "bytes": 37609,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-ore.svg",
+    "kind": "resource-ore",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_ore.117f64dab28e1c987958.svg",
+    "sha256": "8ed686b69051f6ff2a509654535247787059ba5645ca84410ca83df572f4cabf",
+    "bytes": 12454,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-knight.svg",
+    "kind": "dev-knight",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_knight.a58573f2154fa93a6319.svg",
+    "sha256": "33139ef21c74c7153de00d87edd2d1f393a7f5e0503e9c4854095da358282a66",
+    "bytes": 4802,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-roadbuilding.svg",
+    "kind": "dev-roadbuilding",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_roadbuilding.994e8f21698ce6c350bd.svg",
+    "sha256": "18598bc9e55462cc27a07de8d79fb8d2fc4eee1d87e6a335e17d9dc02a67535b",
+    "bytes": 9218,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-yearofplenty.svg",
+    "kind": "dev-yearofplenty",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_yearofplenty.3df210b5455b7438db09.svg",
+    "sha256": "7d72371f47e3431dac370dd812b78b5b41a99571444733604ee1a469cdf6cc0b",
+    "bytes": 14367,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-monopoly.svg",
+    "kind": "dev-monopoly",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_monopoly.dfac189aaff62e271093.svg",
+    "sha256": "fc5b78cff2904f827680502c724761c9f3b3e92ba82f9e525d5f8e9050d48ee5",
+    "bytes": 23349,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "card-vp.svg",
+    "kind": "dev-vp",
+    "source_url": "https://cdn.colonist.io/dist/assets/card_vp.672597308e3a8f1100ae.svg",
+    "sha256": "0318111e99dd9493e24c61ef58eab9de4eaa39f653ed5dcf0f1ee1cc94c8ec47",
+    "bytes": 12540,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "port-generic.svg",
+    "kind": "port-generic",
+    "source_url": "https://cdn.colonist.io/dist/assets/port.7822db58281eb60c3346.svg",
+    "sha256": "43a5fef96866b0cdb6bdce70b937f068d7f1d1f982b84fe613548ece9182e0bd",
+    "bytes": 13004,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "port-wood.svg",
+    "kind": "port-lumber",
+    "source_url": "https://cdn.colonist.io/dist/assets/port_lumber.fc67a372a72f6defad8f.svg",
+    "sha256": "f91a03f5b89c81ec3b67e29ab6de34a59f922e2d3fa975e0ea8e29eddf5bd155",
+    "bytes": 13347,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "port-brick.svg",
+    "kind": "port-brick",
+    "source_url": "https://cdn.colonist.io/dist/assets/port_brick.b936467e35024cbbcdc5.svg",
+    "sha256": "9061a671c8a688fb4a574f6035bbed23e7420ded878d718dcc2d26d84e8a4b08",
+    "bytes": 13671,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "port-wool.svg",
+    "kind": "port-wool",
+    "source_url": "https://cdn.colonist.io/dist/assets/port_wool.506dc6d8ad998d139c99.svg",
+    "sha256": "1491947786757a71ec9544f618b1e22965b9830d16837e1c43cdb58e27af2c03",
+    "bytes": 14199,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "port-grain.svg",
+    "kind": "port-grain",
+    "source_url": "https://cdn.colonist.io/dist/assets/port_grain.93b652acc5827d7e59e8.svg",
+    "sha256": "cf650e7dff159bd82fbc42004e2b256e1255d4e65732df74606658b66d7036e4",
+    "bytes": 23205,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "port-ore.svg",
+    "kind": "port-ore",
+    "source_url": "https://cdn.colonist.io/dist/assets/port_ore.9c7f788e01080b158853.svg",
+    "sha256": "bb0b69d3fed1f2b51ce51e218539b1c502b46286f8ece8dd851701ef0c3c0821",
+    "bytes": 14060,
+    "discovery_url": "https://colonist.io/catan-rules"
+  },
+  {
+    "asset": "terrain-wood.svg",
+    "kind": "terrain-lumber",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_lumber.ce98887f6f467e76852f.svg",
+    "sha256": "76d48004be878226451fb0e47de4488329a697669829b291500325cb8be46093",
+    "bytes": 13130,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "terrain-brick.svg",
+    "kind": "terrain-brick",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_brick.fd5dbb845772bdeba45b.svg",
+    "sha256": "2632d9dc70cf444eca3e1ff3885fb36ad52abc972935ea4ac01f5f538f55bd04",
+    "bytes": 13227,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "terrain-wool.svg",
+    "kind": "terrain-wool",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_wool.29bcdda6873893e2a506.svg",
+    "sha256": "166ce43a53eb61a1a96a04c7a437237a5e585ff42be7e2ecdcb1c5815b7482d9",
+    "bytes": 29386,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "terrain-grain.svg",
+    "kind": "terrain-grain",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_grain.50fd57746befab85ea35.svg",
+    "sha256": "1f9eda756628d7f6fb9c4c6ca9f240efc8c390641b53d7994a8439fcf32dcf2c",
+    "bytes": 89516,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "terrain-ore.svg",
+    "kind": "terrain-ore",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_ore.1b4024908dfb91c65232.svg",
+    "sha256": "0fda94e4700f149b6bc03b89f473fcc2da7973c35bd81e0fbeb828cd65e2b788",
+    "bytes": 18628,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "terrain-desert.svg",
+    "kind": "terrain-desert",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_desert.9e169062cabe58886069.svg",
+    "sha256": "176362935f2487312877ff99f0ff2045e540aac27197cff28f3d1f527adec187",
+    "bytes": 7271,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "terrain-gold.svg",
+    "kind": "terrain-gold",
+    "source_url": "https://cdn.colonist.io/dist/assets/generated_tile_gold.f79a9704ef4ae263058d.svg",
+    "sha256": "57a67d5d50be9505ced199a7f4cb0e328be8a1a70ef1f7e35b3e51903765d104",
+    "bytes": 13452,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "icon-chit.svg",
+    "kind": "icon-chit",
+    "source_url": "https://cdn.colonist.io/dist/assets/icon_chit.147cbb6f9a6127b840db.svg",
+    "sha256": "b7c74a4f0197742ee826cb06fa03d12ee28dfa292cfccbb68cfbf9988b784543",
+    "bytes": 1129,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  },
+  {
+    "asset": "icon-robber.svg",
+    "kind": "icon-robber",
+    "source_url": "https://cdn.colonist.io/dist/assets/icon_robber.2b909f277d60f24633e8.svg",
+    "sha256": "82f613a13d4da3622397015afacd01e430f419eea4f0de74e88d727f7a8c06bc",
+    "bytes": 3322,
+    "discovery_url": "https://cdn.colonist.io/dist/js/shared.124dde6991b0f7b9af54.js"
+  }
+]

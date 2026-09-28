@@ -1428,7 +1428,7 @@ input:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #1b7dad;
+  background: #0869a8;
 }
 .board-stage {
   width: 100%;
@@ -1479,17 +1479,15 @@ input:focus-visible {
   max-width: 85%;
   color: #e3f7ff;
 }
-.board-roads path {
-  stroke-width: 10;
+.board-roads line {
   filter: drop-shadow(0 2px 1px #3b382d);
 }
-.ports circle {
-  fill: #f7eed5;
-  stroke: #927043;
-  stroke-width: 4;
+.preview-port-piers line {
+  stroke-linecap: butt;
+  filter: drop-shadow(0 1px 1px #443015);
 }
-.ports text {
-  fill: #35536a;
+.ports image {
+  filter: drop-shadow(0 2px 1px #043d63);
 }
 .game-aside {
   min-height: 0;
@@ -1584,6 +1582,16 @@ input:focus-visible {
   flex-direction: column;
   gap: 7px;
 }
+.bank-resource-cards {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+}
+.bank-resource-cards img {
+  display: block;
+  width: 32px;
+  height: 45px;
+}
 .bank-preview span {
   color: #648096;
 }
@@ -1641,75 +1649,59 @@ input:focus-visible {
   opacity: 0.55;
 }
 .game-toolbar {
-  height: 154px;
+  height: 75px;
   flex: none;
-  background: #173e61;
+  background: #f5f1e8;
   display: flex;
-  gap: 38px;
-  padding: 12px 16px 14px;
+  align-items: center;
+  gap: 32px;
+  padding: 9px 16px;
+  border-top: 4px solid #0d5487;
 }
 .toolbar-label {
   font-size: 10px;
   font-weight: 800;
   color: #d9e8f1;
   letter-spacing: 0.35px;
-  display: block;
+  display: none;
   margin-bottom: 8px;
 }
 .resource-hand {
-  width: 440px;
+  width: 240px;
   flex: none;
 }
 .resource-cards {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 3px;
 }
 .resource-card {
   position: relative;
-  width: 77px;
-  height: 94px;
-  border: 3px solid #f5df9c;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  box-shadow: 0 3px 0 #0d293f;
-  background: #25754e;
+  width: 38px;
+  height: 53px;
+  flex: none;
 }
-.resource-symbol {
-  font-size: 30px;
-  line-height: 1;
-  opacity: 0.77;
-}
-.resource-card strong {
-  font-size: 9px;
-  letter-spacing: 0.4px;
-  margin-top: 4px;
+.resource-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .resource-card em {
   font-style: normal;
   position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: #fdfaf0;
-  border-radius: 5px 0 3px 0;
-  color: #163953;
-  padding: 1px 7px;
-  font-size: 15px;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding-right: 3px;
+  border-radius: 0 0 0 100%;
+  background: #0769a7;
+  color: #fff;
+  font-size: 12px;
   font-weight: 800;
-}
-.resource-wool {
-  background: #83ba61;
-}
-.resource-brick {
-  background: #b7664f;
-}
-.resource-grain {
-  background: #dfb951;
-}
-.resource-ore {
-  background: #82909d;
 }
 .game-actions {
   min-width: 0;
@@ -1721,9 +1713,9 @@ input:focus-visible {
   flex-wrap: wrap;
 }
 .game-actions .button {
-  height: 55px;
+  height: 48px;
   min-width: 114px;
-  font-size: 14px;
+  font-size: 13px;
   padding: 0 10px;
 }
 .game-roll,
@@ -1836,7 +1828,7 @@ input:focus-visible {
     gap: 20px;
   }
   .resource-hand {
-    width: 420px;
+    width: 220px;
   }
   .game-actions .button {
     min-width: 96px;
@@ -1876,10 +1868,7 @@ input:focus-visible {
     grid-template-columns: minmax(0, 1fr) 230px;
   }
   .resource-hand {
-    width: 350px;
-  }
-  .resource-card {
-    width: 62px;
+    width: 210px;
   }
   .game-actions .button {
     min-width: 89px;
@@ -1887,7 +1876,7 @@ input:focus-visible {
     font-size: 12px;
   }
   .game-toolbar {
-    height: 145px;
+    height: 75px;
   }
   .game-topbar {
     gap: 13px;
@@ -2173,14 +2162,8 @@ input:focus-visible {
     gap: 5px;
   }
   .resource-card {
-    width: 19%;
-    height: 76px;
-  }
-  .resource-symbol {
-    font-size: 23px;
-  }
-  .resource-card strong {
-    font-size: 8px;
+    width: 42px;
+    height: 58px;
   }
   .game-actions > div {
     display: grid;

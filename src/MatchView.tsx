@@ -67,12 +67,15 @@ function sumCounts(counts: ResourceCounts): number {
   return RESOURCES.reduce((sum, resource) => sum + counts[resource], 0);
 }
 
+const BOARD_ORIGIN = { x: 396, y: 372 };
+const BOARD_HEX_SIZE = 56.6;
+
 function atVertex(x: number, y: number, size: number) {
-  return { x: 450 + (Math.sqrt(3) / 2) * size * x, y: 345 + (size / 2) * y };
+  return { x: BOARD_ORIGIN.x + (Math.sqrt(3) / 2) * size * x, y: BOARD_ORIGIN.y + (size / 2) * y };
 }
 
 function atHex(q: number, r: number, size: number) {
-  return { x: 450 + Math.sqrt(3) * size * (q + r / 2), y: 345 + 1.5 * size * r };
+  return { x: BOARD_ORIGIN.x + Math.sqrt(3) * size * (q + r / 2), y: BOARD_ORIGIN.y + 1.5 * size * r };
 }
 
 function polygonPoints(x: number, y: number, size: number) {
@@ -80,6 +83,56 @@ function polygonPoints(x: number, y: number, size: number) {
     const angle = ((60 * index - 90) * Math.PI) / 180;
     return `${x + size * Math.cos(angle)},${y + size * Math.sin(angle)}`;
   }).join(" ");
+}
+
+const baseAsset = (name: string) => `/assets/colonist/base/png/${name}@2x.png`;
+
+function terrainAsset(terrain: Hex["terrain"]): string {
+  return baseAsset(`terrain-${terrain}`);
+}
+
+function resourceCardAsset(resource: Resource): string {
+  return baseAsset(`card-${resource}`);
+}
+
+function numberTokenAsset(number: number): string {
+  return baseAsset(`token-${number}`);
+}
+
+function portAsset(resource: Resource | null): string {
+  return baseAsset(`port-${resource ?? "generic"}`);
+}
+
+function developmentCardAsset(type: DevelopmentCard["type"]): string {
+  const names: Record<DevelopmentCard["type"], string> = {
+    knight: "card-knight",
+    "road-building": "card-roadbuilding",
+    "year-of-plenty": "card-yearofplenty",
+    monopoly: "card-monopoly",
+    "victory-point": "card-vp",
+  };
+  return baseAsset(names[type]);
+}
+
+// The nine anchored ship centers follow the Base board reference, clockwise
+// from the northwest shore. The board's terrain and port types still shuffle.
+const PORT_SLOTS = [
+  { hexId: "h:0,-2", edge: 5, u: -1.53, v: -3.09 },
+  { hexId: "h:1,-2", edge: 0, u: 0.47, v: -3.09 },
+  { hexId: "h:2,-1", edge: 0, u: 1.95, v: -2.05 },
+  { hexId: "h:2,0", edge: 1, u: 2.94, v: -0.01 },
+  { hexId: "h:1,1", edge: 2, u: 1.95, v: 2.01 },
+  { hexId: "h:-1,2", edge: 2, u: 0.47, v: 3.04 },
+  { hexId: "h:-2,2", edge: 3, u: -1.53, v: 3.04 },
+  { hexId: "h:-2,1", edge: 4, u: -2.57, v: 1 },
+  { hexId: "h:-1,-1", edge: 4, u: -2.57, v: -1.03 },
+] as const;
+
+function pierEnd(from: { x: number; y: number }, ship: { x: number; y: number }) {
+  const dx = from.x - ship.x;
+  const dy = from.y - ship.y;
+  const distance = Math.hypot(dx, dy);
+  return { x: ship.x + dx / distance * 27, y: ship.y + dy / distance * 27 };
 }
 
 function adjacentTiles(view: GameView, hexIds: string[]): string {
@@ -131,62 +184,14 @@ function keyboardClick(event: React.KeyboardEvent<SVGElement>, action: () => voi
   }
 }
 
-function TerrainMark({ terrain, x, y }: { terrain: Hex["terrain"]; x: number; y: number }) {
-  if (terrain === "wood") return (
-    <g transform={`translate(${x} ${y - 19})`} strokeLinejoin="round">
-      <path d="M-22 18l13-30 8 16 8-29 18 43Z" fill="#2a5c3e" stroke="#194c38" strokeWidth="3" />
-      <path d="M-9 18v9M8 18v9" stroke="#674b2b" strokeWidth="6" />
-      <path d="M-11 -1l4-8M4 2l6-10" stroke="#92bd73" strokeWidth="3" opacity=".7" />
-    </g>
-  );
-  if (terrain === "wool") return (
-    <g transform={`translate(${x} ${y - 19})`}>
-      <ellipse cy="9" rx="25" ry="15" fill="#f0efd7" stroke="#98ae7f" strokeWidth="3" />
-      <circle cx="-14" cy="2" r="11" fill="#f7f5e3" />
-      <circle cx="1" cy="-2" r="13" fill="#f7f5e3" />
-      <circle cx="14" cy="5" r="11" fill="#f7f5e3" />
-      <circle cx="20" cy="10" r="3" fill="#5b6148" />
-      <path d="M-11 21v8M8 21v8" stroke="#625d46" strokeWidth="4" />
-    </g>
-  );
-  if (terrain === "grain") return (
-    <g transform={`translate(${x} ${y - 20})`} stroke="#8c6c26" strokeWidth="2.7" fill="none" strokeLinecap="round">
-      <path d="M0 29v-48M-12 26v-37M13 27v-39M0-12l-7-6M0-5l8-7M0 2l-8-8M0 10l7-8M-12-3l-7-6M-12 5l6-7M13-4l6-6M13 4l-7-6" />
-      <path d="M-4-15l4-8 4 8M-16-7l4-8 4 8M9-8l4-8 4 8" fill="#f0d978" />
-    </g>
-  );
-  if (terrain === "brick") return (
-    <g transform={`translate(${x} ${y - 16})`} stroke="#894935" strokeWidth="2" fill="#d89568">
-      <rect x="-26" y="-15" width="24" height="11" rx="1" />
-      <rect x="0" y="-15" width="25" height="11" rx="1" />
-      <rect x="-20" y="-2" width="25" height="11" rx="1" />
-      <rect x="7" y="-2" width="25" height="11" rx="1" />
-      <rect x="-26" y="11" width="24" height="11" rx="1" />
-      <rect x="0" y="11" width="25" height="11" rx="1" />
-    </g>
-  );
-  if (terrain === "ore") return (
-    <g transform={`translate(${x} ${y - 17})`} strokeLinejoin="round">
-      <path d="M-30 26l15-41 11 20 11-30 25 51Z" fill="#6e8190" stroke="#4d6270" strokeWidth="3" />
-      <path d="M-15-15L-6 1-3 4l10-29L17-5 9-9Z" fill="#dbe1d9" />
-      <path d="M-30 26l15-41L-6 1-17 17Z" fill="#9facaa" />
-    </g>
-  );
-  return (
-    <g transform={`translate(${x} ${y - 15})`}>
-      <path d="M-30 20Q-8 1 9 16T31 13M-24 30Q0 12 25 27" fill="none" stroke="#e9d49c" strokeWidth="8" />
-      <path d="M10 8v-26M10-9l10-6M10-2L0-9" stroke="#9c7950" strokeWidth="3" fill="none" />
-    </g>
-  );
-}
-
 function GameBoard({ view, placement, onCommand, busy }: {
   view: GameView;
   placement: Placement;
   onCommand: (command: MatchCommand) => void;
   busy: boolean;
 }) {
-  const size = 69;
+  const size = BOARD_HEX_SIZE;
+  const tileWidth = Math.sqrt(3) * size;
   const active = view.activePlayerId === view.self.id;
   const settlementIds = active
     ? view.phase === "setup-settlement"
@@ -205,55 +210,56 @@ function GameBoard({ view, placement, onCommand, busy }: {
   const hexes = Object.values(view.board.hexes);
   const vertices = view.board.vertices;
   const edges = view.board.edges;
+  const portPlacements = view.board.ports.map((port) => {
+    const [a, b] = port.vertexIds.map((id) => atVertex(vertices[id]!.x, vertices[id]!.y, size));
+    const slot = PORT_SLOTS.find((candidate) => view.board.hexes[candidate.hexId]?.edgeIds[candidate.edge] === port.edgeId);
+    const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const dx = midpoint.x - BOARD_ORIGIN.x;
+    const dy = midpoint.y - BOARD_ORIGIN.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const ship = slot
+      ? { x: BOARD_ORIGIN.x + slot.u * tileWidth, y: BOARD_ORIGIN.y + slot.v * size * 1.5 }
+      : { x: midpoint.x + dx / length * 57, y: midpoint.y + dy / length * 57 };
+    return { port, a, b, ship };
+  });
   const hexAction = (id: string) => onCommand({ type: "move-robber", hexId: id });
   return (
     <svg className="match-board-svg" viewBox="0 0 900 690" role="group" aria-label="Playable Base island board">
       <defs>
-        <linearGradient id="match-sea" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#35a1d0" />
-          <stop offset=".53" stopColor="#177db9" />
-          <stop offset="1" stopColor="#0b598f" />
-        </linearGradient>
-        <radialGradient id="match-wood"><stop stopColor="#75a653" /><stop offset="1" stopColor="#2f6847" /></radialGradient>
-        <radialGradient id="match-wool"><stop stopColor="#d4db83" /><stop offset="1" stopColor="#8baf5c" /></radialGradient>
-        <radialGradient id="match-grain"><stop stopColor="#f7e18b" /><stop offset="1" stopColor="#d3a94f" /></radialGradient>
-        <radialGradient id="match-brick"><stop stopColor="#e4a66f" /><stop offset="1" stopColor="#b9684d" /></radialGradient>
-        <radialGradient id="match-ore"><stop stopColor="#b5c2c4" /><stop offset="1" stopColor="#738897" /></radialGradient>
-        <radialGradient id="match-desert"><stop stopColor="#f2dfad" /><stop offset="1" stopColor="#d9ba7b" /></radialGradient>
-        <pattern id="match-waves" width="62" height="28" patternUnits="userSpaceOnUse">
-          <path d="M0 15Q15 6 31 15T62 15" stroke="#c4eff0" opacity=".17" strokeWidth="2" fill="none" />
-        </pattern>
-        <pattern id="match-speckle" width="20" height="20" patternUnits="userSpaceOnUse">
-          <circle cx="3" cy="4" r="1.4" fill="#fff7db" opacity=".44" />
-          <circle cx="14" cy="12" r="1" fill="#704e24" opacity=".29" />
-        </pattern>
         <filter id="match-shadow"><feDropShadow dx="0" dy="9" stdDeviation="10" floodColor="#064a6b" floodOpacity=".38" /></filter>
       </defs>
-      <rect width="900" height="690" fill="url(#match-sea)" />
-      <rect width="900" height="690" fill="url(#match-waves)" />
-      <path d="M307 55Q450 6 590 60L686 136Q785 236 783 353Q791 477 679 557L583 625Q453 676 308 627L215 558Q101 472 112 344Q99 224 210 134Z" fill="#bdd9cf" stroke="#80c4d4" strokeWidth="11" filter="url(#match-shadow)" />
-      <path d="M310 66Q450 16 585 71L676 145Q774 243 772 350Q779 472 672 546L577 613Q453 662 315 616L224 548Q111 462 124 341Q110 234 220 144Z" fill="#e2ca92" stroke="#f7e9bd" strokeWidth="9" />
+      <rect width="900" height="690" fill="#09639e" />
+      <g className="match-coast" strokeLinejoin="round" filter="url(#match-shadow)">
+        {(["#0d78ad", "#78c7e2", "#f3f5d9", "#e2c27a"] as const).map((color, layer) => (
+          <g key={color} fill="#dfbc70" stroke={color} strokeWidth={[48, 38, 29, 21][layer]}>
+            {hexes.map((hex) => {
+              const point = atHex(hex.q, hex.r, size);
+              return <polygon key={hex.id} points={polygonPoints(point.x, point.y, size)} />;
+            })}
+          </g>
+        ))}
+      </g>
+      {portPlacements.map(({ port, a, b, ship }) => (
+        <g key={`${port.edgeId}:piers`} className="match-port-piers">
+          {[a, b].map((from, index) => {
+            const to = pierEnd(from, ship);
+            return <g key={index}>
+              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#80511c" strokeWidth="11" />
+              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#dca13a" strokeWidth="8" strokeDasharray="6 2" />
+            </g>;
+          })}
+        </g>
+      ))}
       {hexes.map((hex) => {
         const point = atHex(hex.q, hex.r, size);
         const robber = view.robberHexId === hex.id;
         const legalRobber = robberIds.includes(hex.id);
         return (
           <g key={hex.id} className={`match-hex match-hex-${hex.terrain}`}>
-            <polygon points={polygonPoints(point.x, point.y, size - 1)} fill="#94692f" stroke="#7c5729" strokeWidth="3" />
-            <polygon points={polygonPoints(point.x, point.y, size - 7)} fill={`url(#match-${hex.terrain})`} stroke="#efce88" strokeWidth="3" />
-            <polygon points={polygonPoints(point.x, point.y, size - 9)} fill="url(#match-speckle)" opacity=".55" />
-            <TerrainMark terrain={hex.terrain} x={point.x} y={point.y} />
-            {hex.number !== null && (
-              <g>
-                <circle cx={point.x} cy={point.y + 24} r="20" fill="#fff6df" stroke="#ae8149" strokeWidth="3" />
-                <text x={point.x} y={point.y + 32} textAnchor="middle" fontSize="24" fontWeight="900" fill={hex.number === 6 || hex.number === 8 ? "#b23d32" : "#253e50"}>{hex.number}</text>
-              </g>
-            )}
+            <image href={terrainAsset(hex.terrain)} x={point.x - tileWidth / 2} y={point.y - size} width={tileWidth} height={size * 2} />
+            {hex.number !== null && <image href={numberTokenAsset(hex.number)} x={point.x - 22} y={point.y + 4} width="44" height="44" />}
             {robber && (
-              <g transform={`translate(${point.x + 37} ${point.y - 32})`}>
-                <circle r="15" fill="#253f50" stroke="#fff2d6" strokeWidth="3" />
-                <path d="M-7 5q7-10 14 0M0-8v6" fill="none" stroke="#fff2d6" strokeWidth="3" strokeLinecap="round" />
-              </g>
+              <image href={baseAsset("icon-robber")} x={point.x + 18} y={point.y - 53} width="39" height="39" />
             )}
             <title>{terrainLabels[hex.terrain]}{hex.number ? ` · ${hex.number}` : ""}{robber ? " · Robber" : ""}</title>
             {legalRobber && (
@@ -271,22 +277,10 @@ function GameBoard({ view, placement, onCommand, busy }: {
           </g>
         );
       })}
-      {view.board.ports.map((port) => {
-        const [a, b] = port.vertexIds.map((id) => atVertex(vertices[id]!.x, vertices[id]!.y, size));
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        const radial = Math.hypot(mx - 450, my - 345);
-        const x = mx + ((mx - 450) / radial) * 31;
-        const y = my + ((my - 345) / radial) * 31;
-        return (
-          <g key={port.edgeId} className="match-port">
-            <path d={`M${mx} ${my}L${x} ${y}`} stroke="#f8e3b8" strokeWidth="3" />
-            <circle cx={x} cy={y} r="20" />
-            <text x={x} y={y + 5} textAnchor="middle">{port.ratio}:1</text>
-            <title>{port.resource ? `${resources[port.resource].label} port` : "Any resource port"}</title>
-          </g>
-        );
-      })}
+      {portPlacements.map(({ port, ship }) => <g key={port.edgeId} className="match-port">
+        <image href={portAsset(port.resource)} x={ship.x - 31} y={ship.y - 31} width="62" height="62" />
+        <title>{port.resource ? `${resources[port.resource].label} port` : "Any resource port"}</title>
+      </g>)}
       {Object.entries(view.roads).map(([edgeId, ownerId]) => {
         const [aId, bId] = edges[edgeId]!.vertexIds;
         const a = atVertex(vertices[aId]!.x, vertices[aId]!.y, size);
@@ -344,8 +338,8 @@ function GameBoard({ view, placement, onCommand, busy }: {
       })}
       {view.lastRoll && (
         <g className="match-roll-token">
-          <rect x="401" y="622" width="98" height="43" rx="13" fill="#fff4dc" stroke="#b3864b" strokeWidth="3" />
-          <text x="450" y="649" textAnchor="middle" fontSize="18" fontWeight="800" fill="#274457">⚄ {view.lastRoll[0] + view.lastRoll[1]}</text>
+          <rect x="700" y="558" width="160" height="53" rx="12" fill="#fff4dc" stroke="#b3864b" strokeWidth="3" />
+          <text x="780" y="592" textAnchor="middle" fontSize="20" fontWeight="800" fill="#274457">⚄ {view.lastRoll[0] + view.lastRoll[1]}</text>
         </g>
       )}
     </svg>
@@ -354,9 +348,8 @@ function GameBoard({ view, placement, onCommand, busy }: {
 
 function ResourceBadge({ resource, count, compact = false }: { resource: Resource; count: number; compact?: boolean }) {
   const info = resources[resource];
-  return <span className={`match-resource-badge ${compact ? "compact" : ""}`} style={{ "--resource-color": info.color } as React.CSSProperties}>
-    <span className="match-resource-symbol">{info.symbol}</span>
-    <span className="match-resource-name">{info.label}</span>
+  return <span className={`match-resource-badge ${compact ? "compact" : ""}`}>
+    <img src={resourceCardAsset(resource)} alt={`${info.label} resource card`} />
     <strong>{count}</strong>
   </span>;
 }
@@ -373,7 +366,7 @@ function CountPicker({ title, counts, onChange, maxFor }: {
       <div>
         {RESOURCES.map((resource) => (
           <label key={resource}>
-            <span style={{ color: resources[resource].color }}>{resources[resource].symbol}</span>
+            <img className="match-picker-card" src={resourceCardAsset(resource)} alt="" />
             <span>{resources[resource].label}</span>
             <button type="button" aria-label={`Remove ${resources[resource].label}`} disabled={counts[resource] === 0} onClick={() => onChange(resource, counts[resource] - 1)}><Minus size={13} /></button>
             <b>{counts[resource]}</b>
@@ -471,7 +464,7 @@ function DevelopmentPanel({ view, onCommand, busy }: { view: GameView; onCommand
       <div className="match-dev-list">
         {view.self.developmentCards.length ? view.self.developmentCards.map((card) => (
           <div className="match-dev-card" key={card.id}>
-            <Sparkles size={20} />
+            <img src={developmentCardAsset(card.type)} alt="" />
             <div><strong>{developmentLabels[card.type]}</strong><small>{card.type === "victory-point" ? "Hidden point" : playable.has(card.id) ? "Ready to play" : "Available next turn"}</small></div>
             {card.type !== "victory-point" && <button type="button" disabled={!playable.has(card.id) || busy} onClick={() => play(card)}>Play</button>}
           </div>
@@ -686,13 +679,13 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
             </div>)}
           </div></div>
           <div className="match-sidebar-section match-activity"><h2>ACTIVITY</h2>{events.length ? events.map((event, index) => <p key={`${index}:${event}`}>{event}</p>) : <p>Game started. Build your first settlements and roads.</p>}{view.longestRoadHolderId && <p>Longest Road: {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</p>}{view.largestArmyHolderId && <p>Largest Army: {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</p>}</div>
-          <div className="match-sidebar-section match-bank"><h2>BANK & PORTS</h2><div>{RESOURCES.map((resource) => <span key={resource} title={resources[resource].label} style={{ color: resources[resource].color }}>{resources[resource].symbol} {view.bank[resource]}</span>)}</div></div>
+          <div className="match-sidebar-section match-bank"><h2>BANK & PORTS</h2><div>{RESOURCES.map((resource) => <span key={resource} title={resources[resource].label}><img src={resourceCardAsset(resource)} alt="" />{view.bank[resource]}</span>)}</div></div>
           <div className="match-chat"><h2><MessageCircle size={16} /> CHAT</h2><div className="match-chat-messages">{latestChat.length ? latestChat.map((line) => <p key={line.id}><strong>{line.name}:</strong> {line.text}</p>) : <p>Talk strategy with your friends.</p>}</div><form onSubmit={(event) => void sendMessage(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={240} aria-label="Game chat message" placeholder="Send a message" /><button type="submit" aria-label="Send message" disabled={!chatDraft.trim() || chatBusy}><Send size={17} /></button></form></div>
         </aside>
       </div>
 
       <div className="match-toolbar">
-        <div className="match-hand"><span className="match-toolbar-label">YOUR HAND · {handSize} CARDS</span><div className="match-hand-cards">{RESOURCES.map((resource) => <ResourceBadge key={resource} resource={resource} count={view.self.resources[resource]} />)}</div></div>
+        <div className="match-hand"><span className="match-toolbar-label">YOUR HAND · {handSize} CARDS</span><div className="match-hand-cards">{handSize ? RESOURCES.filter((resource) => view.self.resources[resource] > 0).map((resource) => <ResourceBadge key={resource} resource={resource} count={view.self.resources[resource]} />) : <span className="match-empty-hand">Your first resources arrive after your second settlement.</span>}</div></div>
         <div className="match-actions"><span className="match-toolbar-label">ACTIONS</span><div className="match-action-row">
           <button className="match-action-button roll" type="button" disabled={!view.legal.canRoll || busy} onClick={() => void command({ type: "roll" })}><Dice5 size={19} /> Roll dice</button>
           <button className="match-action-button trade" type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} onClick={() => { setPlacement(null); setPanel("trade"); }}><ShoppingBasket size={19} /> Trade</button>

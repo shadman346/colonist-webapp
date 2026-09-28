@@ -125,7 +125,7 @@ The rules, room, command, and visibility contracts; editable Figma room flow; re
 
 1. Start Docker Desktop, run the local Supabase stack, reset the migrations, and serve both command functions. Verify anonymous sign-in, room membership, game-view RLS, and private Realtime with separate browser profiles.
 2. Finish one complete local Supabase-backed match through the UI, including seven/discard/robber, development cards, victory, rematch, and reconnect. Capture bugs as rule or interface regression tests.
-3. Finish the remaining Figma dialogs and phone states, then compare them with the running app at 1280 × 720 and 390 × 844. Add original production art refinements to the asset manifest.
+3. Finish the remaining Figma dialogs and phone states, then compare them with the running app at 1280 × 720 and 390 × 844. Keep the imported asset provenance and design handoff current.
 4. After the owner creates Supabase and Cloudflare accounts, apply the migrations and function settings, deploy the static app, and run a four-friend remote playtest. Finish the operating runbook after real hosting behavior is observed.
 
 The first two steps do not need hosted Supabase or Cloudflare accounts. The local Supabase run does need Docker Desktop to be running on this machine.
