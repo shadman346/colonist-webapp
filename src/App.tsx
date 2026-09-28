@@ -17,7 +17,6 @@ import {
   Send,
   X,
 } from "lucide-react";
-import BoardPreview from "./BoardPreview";
 import MatchView from "./MatchView";
 import {
   canStart,
@@ -204,7 +203,8 @@ function App() {
   );
   const isSignedIn = Boolean(identity.id && identityResolved);
   const isHost = Boolean(room && room.hostId === identity.id);
-  const showBoard = page === "board";
+  const hasMatch = Boolean(room && isMember && (room.status === "in_game" || room.status === "completed"));
+  const showBoard = page === "board" && hasMatch;
 
   useEffect(() => {
     if (isMember && room?.status === "in_game") setPage("board");
@@ -388,16 +388,18 @@ function App() {
             <Home size={27} />
             <span>Rooms</span>
           </button>
-          <button
-            className={showBoard ? "active" : ""}
-            onClick={() => setPage("board")}
-            type="button"
-          >
-            <div className="nav-hex">
-              <span>⬢</span>
-            </div>
-            <span>Play</span>
-          </button>
+          {hasMatch && (
+            <button
+              className={showBoard ? "active" : ""}
+              onClick={() => setPage("board")}
+              type="button"
+            >
+              <div className="nav-hex">
+                <span>⬢</span>
+              </div>
+              <span>Match</span>
+            </button>
+          )}
           <button onClick={() => setHelpOpen(true)} type="button">
             <BookOpen size={27} />
             <span>Guides</span>
@@ -451,24 +453,14 @@ function App() {
 
         {!identityResolved ? <div className="sign-in-screen"><div className="sign-in-card">Connecting…</div></div> : !isSignedIn ? (
           <SignInScreen onVerified={(signedIn) => { setIdentity(signedIn); setName(signedIn.name); setToast("Signed in. You can join your friends now."); }} />
-        ) : showBoard ? (
-          room && isMember && (room.status === "in_game" || room.status === "completed") ? (
-            <MatchView
-              room={room}
-              identity={identity}
-              onBack={() => setPage("rooms")}
-              onCopy={() => handleCopy(roomLink(room.code), "Invite link copied.")}
-              onChat={(message) => applyAction(() => sendChat(room, message))}
-            />
-          ) : (
-            <BoardPreview
-              room={isMember ? room : null}
-              onBack={() => setPage("rooms")}
-              onCopy={() =>
-                room && handleCopy(roomLink(room.code), "Invite link copied.")
-              }
-            />
-          )
+        ) : showBoard && room ? (
+          <MatchView
+            room={room}
+            identity={identity}
+            onBack={() => setPage("rooms")}
+            onCopy={() => handleCopy(roomLink(room.code), "Invite link copied.")}
+            onChat={(message) => applyAction(() => sendChat(room, message))}
+          />
         ) : room && isMember ? (
           <RoomScreen
             room={room}
@@ -1052,7 +1044,7 @@ function RoomScreen({
               >
                 <Play size={18} fill="currentColor" /> Return to Board
               </button>
-              <span>Match preview in progress</span>
+              <span>Live match in progress</span>
             </>
           ) : isHost ? (
             <>
