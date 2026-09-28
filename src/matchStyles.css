@@ -51,6 +51,23 @@
   font-weight: 900;
   white-space: nowrap;
 }
+.match-countdown {
+  min-width: 58px;
+  text-align: center;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  color: #fff3cf;
+  background: #164765;
+  border: 1px solid #e4c587;
+  border-radius: 7px;
+  padding: 5px 8px;
+}
+.match-countdown.urgent { background: #ae3e30; color: white; border-color: #ffbf9b; }
+.match-connection { color: #d7ecf5; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.match-connection::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #f0ba58; }
+.match-connection.live::before { background: #55d684; }
+.match-saving { position: absolute; z-index: 5; top: 58px; right: 18px; padding: 8px 12px; border-radius: 6px; background: #fff8df; color: #244760; font-size: 12px; font-weight: 800; box-shadow: 0 3px 9px #073e5b80; }
 .match-main {
   flex: 1;
   min-height: 0;

@@ -1,5 +1,5 @@
 import {
-  applyGameCommand, projectGame, randomOutcomeForCommand, webCryptoRandomSource,
+  applyGameCommand, expireTurn, projectGame, randomOutcomeForCommand, webCryptoRandomSource,
   type GameCommand, type GameState,
 } from '../../../engine/index.ts'
 import {
@@ -54,8 +54,17 @@ Deno.serve(async (req) => {
   const state = loaded.state as GameState
   let next: GameState
   try {
-    const outcome = randomOutcomeForCommand(state, command, webCryptoRandomSource())
-    next = applyGameCommand(state, command, outcome)
+    const nowMs = Date.now()
+    if (body.command.type === 'expire-turn') {
+      if (Object.keys(body.command).length !== 1) return json(req, { error: 'INVALID_COMMAND' }, 400)
+      next = expireTurn(state, nowMs, webCryptoRandomSource())
+    } else {
+      if (state.turnDeadlineAt && nowMs >= Date.parse(state.turnDeadlineAt)) {
+        return json(req, { error: 'TURN_EXPIRED' }, 409)
+      }
+      const outcome = randomOutcomeForCommand(state, command, webCryptoRandomSource())
+      next = applyGameCommand(state, command, outcome, nowMs)
+    }
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error
       ? String(error.code) : 'INVALID_MOVE'

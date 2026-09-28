@@ -16,6 +16,16 @@ const CORNERS: Array<[number, number]> = [
 const PORT_RESOURCES: Array<Resource | null> = [
   null, null, null, null, 'wood', 'brick', 'wool', 'grain', 'ore',
 ];
+const LARGE_TERRAIN: Terrain[] = [
+  ...Array<Terrain>(6).fill('wood'), ...Array<Terrain>(6).fill('wool'),
+  ...Array<Terrain>(6).fill('grain'), ...Array<Terrain>(5).fill('brick'),
+  ...Array<Terrain>(5).fill('ore'), 'desert', 'desert',
+];
+const LARGE_NON_RED_NUMBERS = [2, 2, 12, 12, ...[3, 4, 5, 9, 10, 11].flatMap((number) => [number, number, number])];
+const LARGE_RED_NUMBERS = [6, 6, 6, 8, 8, 8];
+const LARGE_PORT_RESOURCES: Array<Resource | null> = [
+  null, null, null, null, null, 'wood', 'brick', 'wool', 'wool', 'grain', 'ore',
+];
 
 export function seededRandom(seed: string): () => number {
   let value = 2166136261;
@@ -153,6 +163,87 @@ export function createBaseBoard(seed: string): Board {
   }
   if (Object.keys(hexes).length !== 19 || Object.keys(vertices).length !== 54 || Object.keys(edges).length !== 72) {
     throw new Error('Invalid Base board geometry');
+  }
+  return { hexes, vertices, edges, ports };
+}
+
+/** The 30-hex, 3-4-5-6-5-4-3 island used by the five/six-player Base mode. */
+export function createLargeBoard(seed: string): Board {
+  const random = seededRandom(`${seed}:large-board`);
+  const locations: Array<[number, number]> = [];
+  for (let r = -3; r <= 3; r += 1) {
+    const width = 6 - Math.abs(r);
+    const qStart = Math.max(-2, -2 - r);
+    for (let q = qStart; q < qStart + width; q += 1) locations.push([q, r]);
+  }
+  const terrains = shuffled(LARGE_TERRAIN, random);
+  const vertices: Record<VertexId, Vertex> = {};
+  const edges: Record<EdgeId, Edge> = {};
+  const hexes: Record<HexId, Hex> = {};
+  locations.forEach(([q, r], index) => {
+    const id = hexId(q, r);
+    const centerX = 2 * q + r;
+    const centerY = 3 * r;
+    const vertexIds = CORNERS.map(([dx, dy]) => vertexId(centerX + dx, centerY + dy));
+    const edgeIds: EdgeId[] = [];
+    vertexIds.forEach((vid, corner) => {
+      if (!vertices[vid]) vertices[vid] = {
+        id: vid, x: centerX + CORNERS[corner]![0], y: centerY + CORNERS[corner]![1],
+        hexIds: [], edgeIds: [], neighborIds: [],
+      };
+      addUnique(vertices[vid]!.hexIds, id);
+      const nextVid = vertexIds[(corner + 1) % 6]!;
+      const eid = edgeId(vid, nextVid);
+      edgeIds.push(eid);
+      if (!edges[eid]) edges[eid] = { id: eid, vertexIds: [vid, nextVid], hexIds: [] };
+      addUnique(edges[eid]!.hexIds, id);
+    });
+    hexes[id] = { id, q, r, terrain: terrains[index]!, number: null, vertexIds, edgeIds };
+  });
+  Object.values(edges).forEach((edge) => {
+    const [a, b] = edge.vertexIds;
+    addUnique(vertices[a]!.edgeIds, edge.id);
+    addUnique(vertices[b]!.edgeIds, edge.id);
+    addUnique(vertices[a]!.neighborIds, b);
+    addUnique(vertices[b]!.neighborIds, a);
+  });
+  const land = Object.values(hexes).filter((hex) => hex.terrain !== 'desert');
+  let redHexes: Hex[] = [];
+  for (let attempt = 0; attempt < 1000 && redHexes.length !== 6; attempt += 1) {
+    const choice: Hex[] = [];
+    for (const hex of shuffled(land, random)) {
+      if (choice.every((other) =>
+        Math.max(Math.abs(hex.q - other.q), Math.abs(hex.r - other.r), Math.abs(hex.q + hex.r - other.q - other.r)) > 1
+      )) choice.push(hex);
+      if (choice.length === 6) break;
+    }
+    redHexes = choice;
+  }
+  if (redHexes.length !== 6) throw new Error('Could not place large-board red number tokens');
+  const redNumbers = shuffled(LARGE_RED_NUMBERS, random);
+  redHexes.forEach((hex, index) => { hex.number = redNumbers[index]!; });
+  const ordinaryNumbers = shuffled(LARGE_NON_RED_NUMBERS, random);
+  let numberIndex = 0;
+  land.forEach((hex) => { if (hex.number === null) hex.number = ordinaryNumbers[numberIndex++]!; });
+
+  const coastline = Object.values(edges).filter((edge) => edge.hexIds.length === 1)
+    .sort((a, b) => {
+      const midpoint = (edge: Edge) => {
+        const [first, second] = edge.vertexIds.map((id) => vertices[id]!);
+        return Math.atan2(first.y + second.y, first.x + second.x);
+      };
+      return midpoint(a) - midpoint(b);
+    });
+  const selected = Array.from({ length: 11 }, (_, index) => coastline[Math.floor(index * coastline.length / 11)]!);
+  const portTypes = shuffled(LARGE_PORT_RESOURCES, random);
+  const ports: Port[] = selected.map((edge, index) => {
+    const resource = portTypes[index]!;
+    return { edgeId: edge.id, vertexIds: edge.vertexIds, ratio: resource === null ? 3 : 2, resource };
+  });
+  if (Object.keys(hexes).length !== 30 || land.length !== 28 ||
+      numberIndex !== ordinaryNumbers.length || coastline.length < 33 ||
+      new Set(ports.flatMap((port) => port.vertexIds)).size !== 22) {
+    throw new Error('Invalid large board geometry');
   }
   return { hexes, vertices, edges, ports };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   Check,
@@ -28,6 +28,8 @@ const palette: Record<string, string> = {
   sky: "#4b9cda",
   mint: "#56a875",
   violet: "#aa83cc",
+  gold: "#bf8325",
+  teal: "#168b86",
 };
 const resources: Record<Resource, { label: string; symbol: string; color: string }> = {
   wood: { label: "Wood", symbol: "♠", color: "#468a54" },
@@ -49,6 +51,7 @@ const phaseLabels: Record<GameView["phase"], string> = {
   "robber-move": "Move the robber",
   "robber-steal": "Choose a player",
   "road-building": "Place free roads",
+  "special-build": "Special Build",
   completed: "Match complete",
 };
 const developmentLabels: Record<DevelopmentCard["type"], string> = {
@@ -190,7 +193,7 @@ function GameBoard({ view, placement, onCommand, busy }: {
   onCommand: (command: MatchCommand) => void;
   busy: boolean;
 }) {
-  const size = BOARD_HEX_SIZE;
+  const size = Object.keys(view.board.hexes).length > 19 ? 43 : BOARD_HEX_SIZE;
   const tileWidth = Math.sqrt(3) * size;
   const active = view.activePlayerId === view.self.id;
   const settlementIds = active
@@ -219,7 +222,7 @@ function GameBoard({ view, placement, onCommand, busy }: {
     const length = Math.hypot(dx, dy) || 1;
     const ship = slot
       ? { x: BOARD_ORIGIN.x + slot.u * tileWidth, y: BOARD_ORIGIN.y + slot.v * size * 1.5 }
-      : { x: midpoint.x + dx / length * 57, y: midpoint.y + dy / length * 57 };
+      : { x: midpoint.x + dx / length * size, y: midpoint.y + dy / length * size };
     return { port, a, b, ship };
   });
   const hexAction = (id: string) => onCommand({ type: "move-robber", hexId: id });
@@ -543,6 +546,9 @@ function phaseMessage(view: GameView, placement: Placement) {
   if (view.legal.discardCount) return `Select ${view.legal.discardCount} cards to discard.`;
   if (view.phase === "discard") return "Waiting for friends to discard their cards.";
   const active = view.players.find((player) => player.id === view.activePlayerId)?.name ?? "A friend";
+  if (view.legal.canRequestSpecialBuild) return view.legal.specialBuildRequested
+    ? `Waiting for ${active}. Your Special Build is reserved for the end of this turn.`
+    : `Waiting for ${active}. You can request a Special Build after this turn.`;
   if (view.activePlayerId !== view.self.id) return `Waiting for ${active} to ${phaseLabels[view.phase].toLowerCase()}.`;
   if (placement) return `Choose a highlighted ${placement === "road" ? "edge" : "corner"} on the island.`;
   if (view.phase === "robber-move") return "Choose a highlighted tile for the robber.";
@@ -550,7 +556,40 @@ function phaseMessage(view: GameView, placement: Placement) {
   if (view.phase === "setup-settlement" || view.phase === "setup-road") return "Choose one of the highlighted spots on the island.";
   if (view.phase === "robber-steal") return "Choose a friend to take one random resource from.";
   if (view.phase === "pre-roll") return "Roll the dice to start your turn.";
+  if (view.phase === "special-build") return "Build with the cards you have, then pass. Trading and development card play are unavailable.";
   return "Make your move, then end your turn.";
+}
+
+function actionMessage(view: GameView, action: GameView["recentActions"][number]): string {
+  const name = view.players.find((player) => player.id === action.actorId)?.name ?? "A player";
+  const labels: Partial<Record<typeof action.type, string>> = {
+    "place-setup-settlement": "placed a settlement",
+    "place-setup-road": "placed a road",
+    "discard": "discarded cards",
+    "move-robber": "moved the robber",
+    "choose-robber-victim": "stole a card",
+    "build-road": "built a road",
+    "build-settlement": "built a settlement",
+    "build-city": "built a city",
+    "buy-development": "bought a development card",
+    "play-knight": "played a Knight",
+    "play-road-building": "played Road Building",
+    "play-year-of-plenty": "played Year of Plenty",
+    "play-monopoly": "played Monopoly",
+    "bank-trade": "traded with the bank",
+    "offer-trade": "offered a trade",
+    "accept-trade": "accepted a trade",
+    "reject-trade": "declined a trade",
+    "cancel-trade": "canceled a trade",
+    "end-turn": "ended the turn",
+    "request-special-build": "changed a Special Build request",
+    "pass-special-build": "finished a Special Build",
+    "turn-expired": "ran out of time",
+  };
+  const label = action.type === "roll" && action.rollTotal
+    ? `rolled ${action.rollTotal}`
+    : labels[action.type] ?? action.type.replaceAll("-", " ");
+  return `${name} ${label}.`;
 }
 
 function PanelShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -579,8 +618,27 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const [panel, setPanel] = useState<Panel>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
-  const [events, setEvents] = useState<string[]>([]);
   const [actionError, setActionError] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const expiryInFlight = useRef(false);
+  const lastExpiryAttempt = useRef(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!view?.turnDeadlineAt || view.phase === "completed" || busy || expiryInFlight.current ||
+      nowMs < Date.parse(view.turnDeadlineAt) || nowMs - lastExpiryAttempt.current < 2500) return;
+    expiryInFlight.current = true;
+    lastExpiryAttempt.current = nowMs;
+    void client.command({ type: "expire-turn" })
+      .then(setView)
+      .catch(() => client.load().then(setView).catch(() => undefined))
+      .finally(() => { expiryInFlight.current = false; });
+  }, [client, view, nowMs, busy]);
 
   useEffect(() => {
     let mounted = true;
@@ -590,7 +648,7 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
       if (mounted) setLoadError(error instanceof Error ? error.message : "Could not load this match.");
     });
     refresh();
-    const unsubscribe = client.subscribe(refresh);
+    const unsubscribe = client.subscribe(refresh, setConnectionStatus);
     return () => { mounted = false; unsubscribe(); };
   }, [client]);
 
@@ -607,13 +665,6 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
       const next = await client.command(item);
       setView(next);
       setPlacement(null);
-      if (item.type === "roll") {
-        const value = next.lastRoll ? next.lastRoll[0] + next.lastRoll[1] : null;
-        if (value) setEvents((current) => [`Rolled ${value}.`, ...current].slice(0, 8));
-      } else {
-        const label = item.type.replaceAll("-", " ");
-        setEvents((current) => [`${label.charAt(0).toUpperCase() + label.slice(1)}.`, ...current].slice(0, 8));
-      }
       if (item.type !== "bank-trade" && item.type !== "buy-development") setPanel(null);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "That action could not be completed.");
@@ -641,6 +692,9 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   );
 
   const active = view.players.find((player) => player.id === view.activePlayerId);
+  const remainingSeconds = view.turnDeadlineAt
+    ? Math.max(0, Math.ceil((Date.parse(view.turnDeadlineAt) - nowMs) / 1000)) : null;
+  const timerText = remainingSeconds === null ? "" : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
   const myTurn = view.self.id === view.activePlayerId;
   const handSize = sumCounts(view.self.resources);
   const canBuild = Boolean(view.legal.roadEdges.length || view.legal.settlementVertices.length || view.legal.cityVertices.length);
@@ -652,20 +706,23 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
         <button className="match-back" type="button" onClick={onBack}><ArrowLeft size={18} /> Rooms</button>
         <strong className="match-brand">HARBOR TABLE</strong>
         <span className="match-room-code">Room {room.code}</span>
-        <span className="match-base">BASE GAME · {view.victoryPointsToWin} POINTS</span>
+        <span className="match-base">{view.players.length >= 5 ? "EXPANDED" : "BASE"} GAME · {view.victoryPointsToWin} POINTS</span>
         <button className="match-copy" type="button" title="Copy invite link" aria-label="Copy invite link" onClick={onCopy}><Copy size={17} /></button>
         <span className="match-turn-badge">TURN {view.turn || "SETUP"}</span>
+        {remainingSeconds !== null && view.phase !== "completed" && <span className={`match-countdown ${remainingSeconds <= 15 ? "urgent" : ""}`} role="timer" aria-label={`${remainingSeconds} seconds remaining in this turn`}>{timerText}</span>}
+        <span className={`match-connection ${connectionStatus}`}>{connectionStatus === "live" ? "Live" : connectionStatus === "reconnecting" ? "Reconnecting" : "Connecting"}</span>
       </header>
 
       <div className="match-main">
         <section className="match-board-area">
           <div className="match-phase-banner">
-            <div><span className="match-phase-kicker">{isLocalPreview ? "LOCAL PREVIEW · " : ""}{view.phase === "completed" ? "GAME OVER" : myTurn ? "YOUR TURN" : `${active?.name.toUpperCase() ?? "FRIEND"}'S TURN`}</span><h1>{phaseLabels[view.phase]}</h1><p>{phaseMessage(view, placement)}</p></div>
+            <div><span className="match-phase-kicker">{isLocalPreview ? "LOCAL PREVIEW · " : ""}{view.phase === "completed" ? "GAME OVER" : myTurn ? "YOUR TURN" : `${active?.name.toUpperCase() ?? "FRIEND"}'S TURN`}</span><h1>{phaseLabels[view.phase]}</h1><p>{remainingSeconds === 0 ? "Time is up. Advancing the match…" : phaseMessage(view, placement)}</p></div>
             {view.lastRoll && <span className="match-dice-result"><Dice5 size={24} /> {view.lastRoll[0]} + {view.lastRoll[1]} = {view.lastRoll[0] + view.lastRoll[1]}</span>}
           </div>
           {targets.length > 0 && <a className="match-skip-targets" href="#match-target-picker">Skip to legal positions</a>}
           <div className="match-board-wrap"><GameBoard view={view} placement={placement} onCommand={(item) => void command(item)} busy={busy} /></div>
           {actionError && <div className="match-error" role="alert">{actionError}<button type="button" onClick={() => setActionError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
+          {busy && <div className="match-saving" role="status">Saving your move…</div>}
           <PendingTrade view={view} onCommand={(item) => void command(item)} busy={busy} />
           {view.phase === "discard" && <DiscardPanel view={view} onCommand={(item) => void command(item)} busy={busy} />}
           {view.phase === "robber-steal" && myTurn && <div className="match-phase-card"><strong>Take one random card from:</strong><div className="match-victim-list">{view.legal.robberVictimIds.map((id) => { const player = view.players.find((candidate) => candidate.id === id); return <button key={id} type="button" disabled={busy} onClick={() => void command({ type: "choose-robber-victim", victimId: id })}><span style={{ background: palette[player?.color ?? ""] ?? "#ddd" }}>{player?.name.charAt(0)}</span>{player?.name}</button>; })}</div></div>}
@@ -678,7 +735,7 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
               <strong className="match-score">{player.id === view.self.id ? view.self.totalPoints : player.publicPoints}<small>VP</small></strong>
             </div>)}
           </div></div>
-          <div className="match-sidebar-section match-activity"><h2>ACTIVITY</h2>{events.length ? events.map((event, index) => <p key={`${index}:${event}`}>{event}</p>) : <p>Game started. Build your first settlements and roads.</p>}{view.longestRoadHolderId && <p>Longest Road: {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</p>}{view.largestArmyHolderId && <p>Largest Army: {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</p>}</div>
+          <div className="match-sidebar-section match-activity"><h2>ACTIVITY</h2>{view.recentActions.length ? [...view.recentActions].reverse().map((action) => <p key={action.number}>{actionMessage(view, action)}</p>) : <p>Game started. Build your first settlements and roads.</p>}{view.longestRoadHolderId && <p>Longest Road: {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</p>}{view.largestArmyHolderId && <p>Largest Army: {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</p>}</div>
           <div className="match-sidebar-section match-bank"><h2>BANK & PORTS</h2><div>{RESOURCES.map((resource) => <span key={resource} title={resources[resource].label}><img src={resourceCardAsset(resource)} alt="" />{view.bank[resource]}</span>)}</div></div>
           <div className="match-chat"><h2><MessageCircle size={16} /> CHAT</h2><div className="match-chat-messages">{latestChat.length ? latestChat.map((line) => <p key={line.id}><strong>{line.name}:</strong> {line.text}</p>) : <p>Talk strategy with your friends.</p>}</div><form onSubmit={(event) => void sendMessage(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={240} aria-label="Game chat message" placeholder="Send a message" /><button type="submit" aria-label="Send message" disabled={!chatDraft.trim() || chatBusy}><Send size={17} /></button></form></div>
         </aside>
@@ -691,6 +748,8 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
           <button className="match-action-button trade" type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} onClick={() => { setPlacement(null); setPanel("trade"); }}><ShoppingBasket size={19} /> Trade</button>
           <button className={`match-action-button build ${placement ? "selected" : ""}`} type="button" disabled={!canBuild || busy} onClick={() => { setPanel(null); setPlacement(placement ? null : view.legal.roadEdges.length ? "road" : view.legal.settlementVertices.length ? "settlement" : "city"); }}><Hammer size={19} /> Build</button>
           <button className="match-action-button dev" type="button" disabled={!(view.legal.canBuyDevelopment || view.self.developmentCards.length) || busy} onClick={() => { setPlacement(null); setPanel("development"); }}><Sparkles size={18} /> Dev cards</button>
+          {view.legal.canRequestSpecialBuild && <button className={`match-action-button build ${view.legal.specialBuildRequested ? "selected" : ""}`} type="button" disabled={busy} onClick={() => void command({ type: "request-special-build", requested: !view.legal.specialBuildRequested })}>{view.legal.specialBuildRequested ? "Cancel build request" : "Request Special Build"}</button>}
+          {view.legal.canPassSpecialBuild && <button className="match-action-button end" type="button" disabled={busy} onClick={() => void command({ type: "pass-special-build" })}><Check size={18} /> Finish build</button>}
           <button className="match-action-button end" type="button" disabled={!view.legal.canEndTurn || busy} onClick={() => void command({ type: "end-turn" })}><Check size={18} /> End turn</button>
         </div>
         {placement && <div className="match-build-picks">

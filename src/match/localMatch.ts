@@ -89,7 +89,7 @@ function initialize(room: RoomView, gameId: string): StoredMatch {
       color: player.color,
     })),
     seed: createSecureBoardSeed(),
-    developmentDeck: createShuffledDevelopmentDeck(webCryptoRandomSource()),
+    developmentDeck: createShuffledDevelopmentDeck(webCryptoRandomSource(), room.players.length),
     victoryPointsToWin: latest.settings.pointsToWin,
   });
   const stored = { gameId, roomCode: latest.code, revision: 0, state };

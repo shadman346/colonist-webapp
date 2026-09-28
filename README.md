@@ -1,12 +1,12 @@
 # Harbor Table
 
-Harbor Table is a private Base hex-board game for three or four friends. This repository holds the web app, rules engine, Supabase migrations and functions, tests, and product handoff.
+Harbor Table is a private Base hex-board game for three to six friends. Rooms with five or six seats use the expanded board and Special Build phase. This repository holds the web app, rules engine, Supabase migrations and functions, existing historical tests, and product handoff.
 
 ## Current build
 
-The app has a responsive room flow: create a private room, invite by link or code, join, choose three or four seats, chat, ready up, and start. With no Supabase configuration, this is a browser-only preview shared across tabs on the same origin. It lets you play and inspect the Base match locally; it does not connect friends on different devices.
+The app has a responsive room flow: create a private room, invite by link or code, join, choose three to six seats, choose a 1–3 minute turn timer, chat, ready up, and start. Players create an email-and-password account, then use a display name in rooms. Email confirmation and anonymous sign-in are disabled in the hosted project. A Supabase connection is required to create or join rooms; the app does not fall back to browser-only play.
 
-The Base rules engine is implemented and tested through a complete ten-point match. The interactive board uses that engine for opening placement, turns, dice, builds, bank and friend trades, development cards, robber/discard decisions, and results. In a configured Supabase deployment, game commands run on the server and the browser reads only its own player view. That hosted flow still needs a live Supabase end-to-end test.
+The Base rules engine is implemented and was previously exercised through a complete ten-point match. The interactive board uses that engine for opening placement, turns, dice, builds, bank and friend trades, development cards, robber/discard decisions, and results. Game commands run on Supabase and the browser reads only its own player view. A server-owned deadline advances an expired turn. Three separate browser identities have manually created, joined, readied, and started a hosted match; a complete hosted match and rematch still need manual validation.
 
 ## Run the app
 
@@ -16,30 +16,22 @@ npm ci
 npm run dev
 ~~~
 
-Open the URL printed by Vite. To check the current build:
-
-~~~powershell
-npm run typecheck
-npm test
-npm run build
-~~~
+Open the URL printed by Vite. Follow the manual scenarios and release gates in [implementation-plan.md](docs/implementation-plan.md). Do not create new automated tests or run existing ones as validation for new work. Run `npm run build` when preparing a deployable bundle; a successful build does not replace manual gameplay checks.
 
 ## Run with local Supabase
 
 Docker Desktop must be running. Follow [backend-local.md](docs/backend-local.md) for the full setup and security checks. In brief:
 
 ~~~powershell
-npm --prefix supabase/tests ci
-npm --prefix supabase/tests test
 npx supabase start
 npx supabase db reset
 npx supabase status
 npx supabase functions serve
 ~~~
 
-Copy .env.example to .env.local and fill in the local API URL and publishable key printed by Supabase status. A configured app uses Supabase anonymous Auth, private room commands, member-only data, and private Realtime revision signals. Do not put a service-role or secret key in a VITE_ variable.
+Copy .env.example to .env.local and fill in the local API URL and publishable key printed by Supabase status. The app uses Supabase email/password Auth, private room commands, member-only data, and private Realtime revision signals. Turn off email confirmation in a local-only stack if you want it to match the hosted project. Do not put a service-role or secret key in a VITE_ variable.
 
-On this machine the Docker service is currently stopped, so the real local Supabase stack has not run. The migration smoke tests and Edge Function typechecks pass independently.
+On this machine the Docker service is currently stopped, so the real local Supabase stack has not run. The hosted Supabase schema and command functions are deployed. Earlier migration smoke checks and Edge Function typechecks are historical evidence; the current validation rule requires manual browser checks.
 
 ## Project map
 
@@ -59,9 +51,10 @@ Editable room and match screens with a clickable desktop/phone flow are in [Figm
 
 ## Next release gates
 
-1. Run the full local Supabase stack and verify multiple isolated browser identities, access rules, reconnect, and rematch.
-2. Exercise a full Base match through the hosted player UI, including forced robber/discard, development cards, completion, and rematch.
-3. Complete the remaining editable Figma match states and compare desktop/phone rendering.
-4. Create Supabase and Cloudflare accounts for hosted deployment and remote friend playtests.
+1. Manually finish a standard hosted Base match with isolated browser identities, including forced robber/discard, development cards, reconnect, completion, and rematch. Check outsider access and privacy.
+2. Repeat the remote room and match flow from separate devices after the static site is hosted.
+3. Manually start and finish five- and six-player matches on the expanded board, including Special Build and timer expiry.
+4. Complete the remaining editable Figma match states for both board sizes and compare desktop/phone rendering.
+5. Deploy the static app to a Cloudflare account, configure its allowed origin, then manually play standard and six-player matches with remote friends.
 
-Cloudflare and hosted Supabase credentials are not needed to inspect this local build.
+The hosted project has no configured email sender for password recovery. Players should keep their passwords safe until SMTP and recovery are set up.

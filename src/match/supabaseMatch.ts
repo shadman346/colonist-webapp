@@ -47,6 +47,8 @@ const messages: Record<string, string> = {
   INVALID_COMMAND: "This move is not valid.",
   ORIGIN_NOT_ALLOWED: "This web address is not enabled for match requests.",
   UNAUTHENTICATED: "Your session expired. Reload the page and try again.",
+  TURN_EXPIRED: "Time ran out. The next turn is loading.",
+  TIMER_NOT_EXPIRED: "The timer is still running.",
 };
 
 async function actorFor(selfId: string): Promise<string> {
@@ -232,8 +234,8 @@ export function createSupabaseMatchClient(room: RoomView, selfId: string): Match
         );
       }
     },
-    subscribe(callback): () => void {
-      return onRoomChange(room.code, callback);
+    subscribe(callback, onStatus): () => void {
+      return onRoomChange(room.code, callback, onStatus, 2_000);
     },
   };
 }

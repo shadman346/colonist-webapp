@@ -17,6 +17,8 @@ The editable production design is in [Friends Hex Game — Product Design & Boar
 
 The host's **Start Game** component navigates from `43:500` through opening settlement `56:819`, opening road `58:3253`, and the active match `54:637`. Additional room frames include host empty/full, invalid code, reconnecting, and 390 × 844 phone host/guest states. Their IDs and screenshot checks are recorded in the [room-flow research note](../../analysis/figma-room-flow-2026-09-28.md).
 
+The linked production frames currently cover the 3–4 player Base board. The release plan also includes a 5–6 player Base board. Its expanded board, six-seat room and player rail, Special Build states, and phone layouts still need editable Figma frames and manual review. Use the [larger-map reference index](../../analysis/large-map-reference-index-2026-09-28.md) when building those states; do not treat the current four-player screens as six-player designs.
+
 ## Match state screens
 
 | Decision | Desktop frame | Phone frame |
@@ -69,4 +71,4 @@ All six desktop tabs link to one another. The [statistics contact sheet](../../a
 
 Reference pages **07 Exact Colonist References** and **08 Room, Invite & Join References** hold dated screenshots and video stills used to measure the interface. Source screenshots, 480 individual art crops, and extraction provenance remain under sibling `analysis/reference/` and `analysis/tile-assets/`. The playable app loads copied Colonist terrain, card, port, plaque, and robber art from its public asset folder; the Figma-only board composition is not in the deployed bundle. See [asset-manifest.md](asset-manifest.md).
 
-The Figma screens show visual states and intended interactions. The app's room, match, and responsive behavior are verified separately through its browser flow and tests. A Figma prototype transition is not evidence that an equivalent server command has completed.
+The Figma screens show visual states and intended interactions. Validate the app's room, match, and responsive behavior manually through its browser flow. A Figma prototype transition is not evidence that an equivalent server command has completed.

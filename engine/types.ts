@@ -84,6 +84,7 @@ export type GamePhase =
   | 'robber-move'
   | 'robber-steal'
   | 'road-building'
+  | 'special-build'
   | 'completed';
 
 export interface PendingTrade {
@@ -92,6 +93,13 @@ export interface PendingTrade {
   toPlayerId: PlayerId;
   give: ResourceCounts;
   want: ResourceCounts;
+}
+
+export interface GameActionSummary {
+  number: number;
+  actorId: PlayerId;
+  type: GameCommand['type'] | 'turn-expired';
+  rollTotal?: number;
 }
 
 export interface GameState {
@@ -111,6 +119,13 @@ export interface GameState {
   setupIndex: number;
   setupVertexId: VertexId | null;
   turn: number;
+  specialBuildRequested: PlayerId[];
+  specialBuildQueue: PlayerId[];
+  regularNextPlayerId: PlayerId | null;
+  turnTimerSeconds: number | null;
+  turnDeadlineAt: string | null;
+  lastTimeoutPlayerId: PlayerId | null;
+  recentActions: GameActionSummary[];
   lastRoll: [number, number] | null;
   pendingDiscards: Record<PlayerId, number>;
   robberReturnPhase: 'pre-roll' | 'action';
@@ -146,7 +161,9 @@ export type GameCommand =
   | { type: 'accept-trade'; actorId: PlayerId; tradeId: string }
   | { type: 'reject-trade'; actorId: PlayerId; tradeId: string }
   | { type: 'cancel-trade'; actorId: PlayerId; tradeId: string }
-  | { type: 'end-turn'; actorId: PlayerId };
+  | { type: 'end-turn'; actorId: PlayerId }
+  | { type: 'request-special-build'; actorId: PlayerId; requested: boolean }
+  | { type: 'pass-special-build'; actorId: PlayerId };
 
 /** Generated exclusively by a trusted server, never accepted from a browser command. */
 export interface RandomOutcome {
@@ -166,4 +183,6 @@ export interface CreateGameOptions {
   /** Independently shuffled by the server with cryptographic randomness. */
   developmentDeck: DevelopmentType[];
   victoryPointsToWin?: number;
+  turnTimerSeconds?: number | null;
+  startedAt?: string;
 }

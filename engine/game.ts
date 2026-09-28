@@ -1,4 +1,4 @@
-import { createBaseBoard } from './board.ts';
+import { createBaseBoard, createLargeBoard } from './board.ts';
 import {
   RESOURCES,
   type CreateGameOptions,
@@ -114,10 +114,17 @@ const DEVELOPMENT_DECK: DevelopmentType[] = [
   ...Array<DevelopmentType>(2).fill('year-of-plenty'),
   ...Array<DevelopmentType>(2).fill('monopoly'),
 ];
+const LARGE_DEVELOPMENT_DECK: DevelopmentType[] = [
+  ...Array<DevelopmentType>(20).fill('knight'),
+  ...Array<DevelopmentType>(5).fill('victory-point'),
+  ...Array<DevelopmentType>(3).fill('road-building'),
+  ...Array<DevelopmentType>(3).fill('year-of-plenty'),
+  ...Array<DevelopmentType>(3).fill('monopoly'),
+];
 
 /** Shuffle the hidden deck using the server's cryptographically secure random source. */
-export function createShuffledDevelopmentDeck(source: RandomIntSource): DevelopmentType[] {
-  const deck = [...DEVELOPMENT_DECK];
+export function createShuffledDevelopmentDeck(source: RandomIntSource, playerCount = 4): DevelopmentType[] {
+  const deck = [...(playerCount >= 5 ? LARGE_DEVELOPMENT_DECK : DEVELOPMENT_DECK)];
   for (let i = deck.length - 1; i > 0; i -= 1) {
     const j = source.int(i + 1);
     requireRule(Number.isInteger(j) && j >= 0 && j <= i,
@@ -127,11 +134,12 @@ export function createShuffledDevelopmentDeck(source: RandomIntSource): Developm
   return deck;
 }
 
-function validDevelopmentDeck(deck: DevelopmentType[]): boolean {
-  if (!Array.isArray(deck) || deck.length !== DEVELOPMENT_DECK.length) return false;
+function validDevelopmentDeck(deck: DevelopmentType[], playerCount: number): boolean {
+  const expectedDeck = playerCount >= 5 ? LARGE_DEVELOPMENT_DECK : DEVELOPMENT_DECK;
+  if (!Array.isArray(deck) || deck.length !== expectedDeck.length) return false;
   const expected = new Map<DevelopmentType, number>();
   const actual = new Map<DevelopmentType, number>();
-  DEVELOPMENT_DECK.forEach((type) => expected.set(type, (expected.get(type) ?? 0) + 1));
+  expectedDeck.forEach((type) => expected.set(type, (expected.get(type) ?? 0) + 1));
   deck.forEach((type) => actual.set(type, (actual.get(type) ?? 0) + 1));
   return [...expected].every(([type, count]) => actual.get(type) === count) && actual.size === expected.size;
 }
@@ -307,20 +315,26 @@ export function bankTradeRatio(state: GameState, actorId: PlayerId, resource: Re
 }
 
 export function createGame(options: CreateGameOptions): GameState {
-  requireRule(options.players.length >= 3 && options.players.length <= 4,
-    'PLAYER_COUNT', 'Base game supports three or four players');
+  requireRule(options.players.length >= 3 && options.players.length <= 6,
+    'PLAYER_COUNT', 'Base game supports three to six players');
   requireRule(new Set(options.players.map((player) => player.id)).size === options.players.length,
     'DUPLICATE_PLAYER', 'Player IDs must be unique');
   requireRule(options.players.every((player) => player.id && player.name.trim() && player.color),
     'INVALID_PLAYER', 'Every player needs an ID, name, and color');
   requireRule(typeof options.seed === 'string' && options.seed.length > 0,
     'INVALID_SEED', 'A server seed is required');
-  requireRule(validDevelopmentDeck(options.developmentDeck),
+  requireRule(validDevelopmentDeck(options.developmentDeck, options.players.length),
     'INVALID_DEVELOPMENT_DECK', 'Server must provide a complete, independently shuffled development deck');
   const target = options.victoryPointsToWin ?? 10;
   requireRule(Number.isInteger(target) && target >= 3 && target <= 20,
     'INVALID_TARGET', 'Victory target must be between 3 and 20');
-  const board = createBaseBoard(options.seed);
+  const timer = options.turnTimerSeconds ?? null;
+  requireRule(timer === null || [60, 90, 120, 180].includes(timer),
+    'INVALID_TIMER', 'Choose a 60, 90, 120, or 180 second turn timer');
+  const startedAt = options.startedAt ? Date.parse(options.startedAt) : Date.now();
+  requireRule(Number.isFinite(startedAt), 'INVALID_TIMER', 'A valid server start time is required');
+  const expanded = options.players.length >= 5;
+  const board = expanded ? createLargeBoard(options.seed) : createBaseBoard(options.seed);
   const ids = options.players.map((player) => player.id);
   const desert = Object.values(board.hexes).find((hex) => hex.terrain === 'desert')!;
   return {
@@ -328,12 +342,18 @@ export function createGame(options: CreateGameOptions): GameState {
     seed: options.seed,
     board,
     players: options.players.map((player) => ({ ...player, resources: emptyResources(), developmentCards: [], playedKnights: 0 })),
-    bank: { wood: 19, brick: 19, wool: 19, grain: 19, ore: 19 },
+    bank: { wood: expanded ? 24 : 19, brick: expanded ? 24 : 19, wool: expanded ? 24 : 19,
+      grain: expanded ? 24 : 19, ore: expanded ? 24 : 19 },
     developmentDeck: [...options.developmentDeck],
     buildings: {}, roads: {}, robberHexId: desert.id,
     phase: 'setup-settlement', activePlayerId: ids[0]!, firstPlayerId: ids[0]!,
     setupOrder: [...ids, ...ids.slice().reverse()], setupIndex: 0, setupVertexId: null,
-    turn: 0, lastRoll: null, pendingDiscards: {}, robberReturnPhase: 'action', robberVictimIds: [],
+    turn: 0, specialBuildRequested: [], specialBuildQueue: [], regularNextPlayerId: null,
+    turnTimerSeconds: timer,
+    turnDeadlineAt: timer === null ? null : new Date(startedAt + timer * 1000).toISOString(),
+    lastTimeoutPlayerId: null,
+    recentActions: [],
+    lastRoll: null, pendingDiscards: {}, robberReturnPhase: 'action', robberVictimIds: [],
     roadBuildingRemaining: 0, roadBuildingReturnPhase: 'action',
     developmentPlayedThisTurn: false, pendingTrade: null, nextTradeNumber: 1,
     longestRoadHolderId: null, largestArmyHolderId: null, winnerId: null,
@@ -371,13 +391,17 @@ function makeRoad(state: GameState, actorId: PlayerId, edgeId: EdgeId): void {
   refreshAwards(state);
 }
 
-export function applyGameCommand(input: GameState, command: GameCommand, outcome: RandomOutcome = {}): GameState {
+export function applyGameCommand(input: GameState, command: GameCommand, outcome: RandomOutcome = {}, nowMs = Date.now()): GameState {
   requireRule(input.version === 1, 'STATE_VERSION', 'Unsupported game state version');
   requireRule(input.phase !== 'completed', 'GAME_COMPLETE', 'This match is complete');
   getPlayer(input, command.actorId);
   const state: GameState = structuredClone(input);
+  state.specialBuildRequested ??= [];
+  state.specialBuildQueue ??= [];
+  state.regularNextPlayerId ??= null;
+  state.lastTimeoutPlayerId = null;
 
-  if (state.pendingTrade && !['accept-trade', 'reject-trade', 'cancel-trade'].includes(command.type)) {
+  if (state.pendingTrade && !['accept-trade', 'reject-trade', 'cancel-trade', 'request-special-build'].includes(command.type)) {
     fail('TRADE_PENDING', 'Resolve the pending trade first');
   }
 
@@ -477,9 +501,9 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
       break;
     }
     case 'build-road': {
-      requirePhase(state, 'action', 'road-building');
+      requirePhase(state, 'action', 'road-building', 'special-build');
       const player = requireActive(state, command.actorId);
-      if (state.phase === 'action') {
+      if (state.phase === 'action' || state.phase === 'special-build') {
         toBank(state, player, COSTS.road);
       }
       makeRoad(state, command.actorId, command.edgeId);
@@ -493,7 +517,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
       break;
     }
     case 'build-settlement': {
-      requirePhase(state, 'action');
+      requirePhase(state, 'action', 'special-build');
       const player = requireActive(state, command.actorId);
       requireRule(legalSettlementVertices(state, command.actorId).includes(command.vertexId),
         'ILLEGAL_SETTLEMENT', 'Settlement must connect to your road and obey the distance rule');
@@ -503,7 +527,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
       break;
     }
     case 'build-city': {
-      requirePhase(state, 'action');
+      requirePhase(state, 'action', 'special-build');
       const player = requireActive(state, command.actorId);
       requireRule(legalCityVertices(state, command.actorId).includes(command.vertexId),
         'ILLEGAL_CITY', 'A city upgrades one of your settlements');
@@ -512,11 +536,11 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
       break;
     }
     case 'buy-development': {
-      requirePhase(state, 'action');
+      requirePhase(state, 'action', 'special-build');
       const player = requireActive(state, command.actorId);
       requireRule(state.developmentDeck.length > 0, 'DECK_EMPTY', 'No development cards remain');
       toBank(state, player, COSTS.development);
-      const number = 25 - state.developmentDeck.length + 1;
+      const number = (state.players.length >= 5 ? 34 : 25) - state.developmentDeck.length + 1;
       player.developmentCards.push({ id: `dev:${number}`, type: state.developmentDeck.pop()!, acquiredTurn: state.turn });
       break;
     }
@@ -620,11 +644,49 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
       requirePhase(state, 'action');
       requireActive(state, command.actorId);
       const currentIndex = state.players.findIndex((player) => player.id === command.actorId);
-      state.activePlayerId = state.players[(currentIndex + 1) % state.players.length]!.id;
-      state.turn += 1;
-      state.phase = 'pre-roll';
+      const nextId = state.players[(currentIndex + 1) % state.players.length]!.id;
+      const clockwise = Array.from({ length: state.players.length - 1 }, (_, offset) =>
+        state.players[(currentIndex + offset + 1) % state.players.length]!.id);
+      state.specialBuildQueue = state.players.length >= 5
+        ? clockwise.filter((id) => state.specialBuildRequested.includes(id)) : [];
+      state.specialBuildRequested = [];
+      if (state.specialBuildQueue.length) {
+        state.regularNextPlayerId = nextId;
+        state.activePlayerId = state.specialBuildQueue[0]!;
+        state.phase = 'special-build';
+      } else {
+        state.activePlayerId = nextId;
+        state.turn += 1;
+        state.phase = 'pre-roll';
+      }
       state.lastRoll = null;
       state.developmentPlayedThisTurn = false;
+      break;
+    }
+    case 'request-special-build': {
+      requireRule(state.players.length >= 5 && state.turn > 0 &&
+        !['setup-settlement', 'setup-road', 'special-build'].includes(state.phase),
+      'SPECIAL_BUILD_UNAVAILABLE', 'Special Build can be requested during another player’s regular turn');
+      requireRule(command.actorId !== state.activePlayerId,
+        'SPECIAL_BUILD_UNAVAILABLE', 'Request Special Build during another player’s turn');
+      requireRule(typeof command.requested === 'boolean', 'INVALID_COMMAND', 'Choose whether to build');
+      state.specialBuildRequested = state.specialBuildRequested.filter((id) => id !== command.actorId);
+      if (command.requested) state.specialBuildRequested.push(command.actorId);
+      break;
+    }
+    case 'pass-special-build': {
+      requirePhase(state, 'special-build');
+      requireActive(state, command.actorId);
+      requireRule(state.specialBuildQueue[0] === command.actorId && state.regularNextPlayerId,
+        'STATE_INVALID', 'Special Build order is invalid');
+      state.specialBuildQueue.shift();
+      if (state.specialBuildQueue.length) state.activePlayerId = state.specialBuildQueue[0]!;
+      else {
+        state.activePlayerId = state.regularNextPlayerId;
+        state.regularNextPlayerId = null;
+        state.phase = 'pre-roll';
+        state.turn += 1;
+      }
       break;
     }
     default: {
@@ -635,15 +697,101 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
     }
   }
   completeIfWon(state);
+  if (state.phase === 'completed') state.turnDeadlineAt = null;
+  else if (state.turnTimerSeconds !== null &&
+    (command.type === 'end-turn' || command.type === 'place-setup-road' || command.type === 'pass-special-build')) {
+    state.turnDeadlineAt = new Date(nowMs + state.turnTimerSeconds * 1000).toISOString();
+  }
+  state.recentActions.push({
+    number: (state.recentActions.at(-1)?.number ?? 0) + 1,
+    actorId: command.actorId,
+    type: command.type,
+    ...(command.type === 'roll' && state.lastRoll
+      ? { rollTotal: state.lastRoll[0] + state.lastRoll[1] } : {}),
+  });
+  state.recentActions = state.recentActions.slice(-12);
+  assertGameInvariants(state);
+  return state;
+}
+
+/** Resolve a missed deadline using the same legal moves as a player. Only a trusted server may call this. */
+export function expireTurn(input: GameState, nowMs: number, source: RandomIntSource): GameState {
+  requireRule(input.turnTimerSeconds !== null && input.turnDeadlineAt !== null &&
+    nowMs >= Date.parse(input.turnDeadlineAt), 'TIMER_NOT_EXPIRED', 'This turn is still active');
+  requireRule(input.phase !== 'completed', 'GAME_COMPLETE', 'This match is complete');
+  const timedOutPlayerId = input.activePlayerId;
+  let state = structuredClone(input);
+  const issue = (command: GameCommand) => {
+    state = applyGameCommand(state, command, randomOutcomeForCommand(state, command, source), nowMs);
+  };
+  const wasSpecialBuild = state.phase === 'special-build';
+  if (wasSpecialBuild) {
+    issue({ type: 'pass-special-build', actorId: timedOutPlayerId });
+  } else if (state.phase === 'setup-settlement') {
+    issue({ type: 'place-setup-settlement', actorId: timedOutPlayerId,
+      vertexId: legalSetupSettlementVertices(state)[0]! });
+  }
+  if (wasSpecialBuild) {
+    // The pass already gave the next player a fresh deadline.
+  } else if (state.phase === 'setup-road') {
+    issue({ type: 'place-setup-road', actorId: timedOutPlayerId,
+      edgeId: legalSetupRoadEdges(state)[0]! });
+  } else {
+    if (state.pendingTrade) state.pendingTrade = null;
+    if (state.phase === 'road-building') {
+      state.phase = state.roadBuildingReturnPhase;
+      state.roadBuildingRemaining = 0;
+    }
+    for (let step = 0; step < 3 && state.phase !== 'action'; step++) {
+      if (state.phase === 'pre-roll') issue({ type: 'roll', actorId: timedOutPlayerId });
+      if (state.phase === 'discard') {
+        for (const [actorId, count] of Object.entries(state.pendingDiscards)) {
+          const resources = emptyResources();
+          const hand = getPlayer(state, actorId).resources;
+          let left = count;
+          for (const resource of RESOURCES) {
+            const taken = Math.min(left, hand[resource]);
+            resources[resource] = taken;
+            left -= taken;
+          }
+          issue({ type: 'discard', actorId, resources });
+        }
+      }
+      if (state.phase === 'robber-move') issue({ type: 'move-robber', actorId: timedOutPlayerId,
+        hexId: Object.keys(state.board.hexes).find((id) => id !== state.robberHexId)! });
+      if (state.phase === 'robber-steal') issue({ type: 'choose-robber-victim', actorId: timedOutPlayerId,
+        victimId: state.robberVictimIds[0]! });
+    }
+    if (state.phase === 'action') issue({ type: 'end-turn', actorId: timedOutPlayerId });
+  }
+  state.lastTimeoutPlayerId = timedOutPlayerId;
+  state.recentActions.push({
+    number: (state.recentActions.at(-1)?.number ?? 0) + 1,
+    actorId: timedOutPlayerId,
+    type: 'turn-expired',
+  });
+  state.recentActions = state.recentActions.slice(-12);
   assertGameInvariants(state);
   return state;
 }
 
 export function assertGameInvariants(state: GameState): void {
-  requireRule(state.players.length >= 3 && state.players.length <= 4, 'STATE_INVALID', 'Invalid player count');
+  requireRule(state.turnTimerSeconds === null || [60, 90, 120, 180].includes(state.turnTimerSeconds),
+    'STATE_INVALID', 'Invalid turn timer');
+  requireRule((state.turnTimerSeconds === null && state.turnDeadlineAt === null) ||
+    (state.turnTimerSeconds !== null && (state.phase === 'completed' ? state.turnDeadlineAt === null :
+      state.turnDeadlineAt !== null && Number.isFinite(Date.parse(state.turnDeadlineAt)))),
+    'STATE_INVALID', 'Invalid turn deadline');
+  requireRule(state.players.length >= 3 && state.players.length <= 6, 'STATE_INVALID', 'Invalid player count');
+  const expanded = state.players.length >= 5;
+  requireRule(Object.keys(state.board.hexes).length === (expanded ? 30 : 19),
+    'STATE_INVALID', 'Board size does not match player count');
+  requireRule((state.specialBuildRequested ?? []).every((id) => state.players.some((player) => player.id === id)) &&
+    (state.specialBuildQueue ?? []).every((id) => state.players.some((player) => player.id === id)),
+  'STATE_INVALID', 'Special Build includes an unknown player');
   RESOURCES.forEach((resource) => {
     const total = state.bank[resource] + state.players.reduce((sum, player) => sum + player.resources[resource], 0);
-    requireRule(total === 19, 'STATE_INVALID', `Resource conservation failed for ${resource}`);
+    requireRule(total === (expanded ? 24 : 19), 'STATE_INVALID', `Resource conservation failed for ${resource}`);
   });
   state.players.forEach((player) => {
     const roadCount = Object.values(state.roads).filter((owner) => owner === player.id).length;

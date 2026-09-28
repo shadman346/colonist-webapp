@@ -4,10 +4,10 @@ This is the shared contract for the first playable private room. The SQL migrati
 
 ## Identity, room, and settings
 
-- Each browser player signs in through Supabase Anonymous Auth. The verified JWT user ID is the stable actor and seat identity. The browser may submit a display name, but may never submit an actor ID, canonical game state, random seed, development deck, dice roll, or theft result.
+- Each browser player creates an email-and-password account or signs in through Supabase Auth before joining. Email confirmation and anonymous sign-in are disabled on the hosted project at the owner's direction. The verified JWT user ID is the stable actor and seat identity. The browser may submit a display name, but may never submit an actor ID, canonical game state, random seed, development deck, dice roll, or theft result. Password recovery is unavailable until an SMTP sender is configured.
 - A room has an unlisted, random 16-character hexadecimal invite code. Anyone holding the code may ask the authenticated `JOIN_ROOM` function to join while the room has a seat. Before joining, a user cannot read that room through the table API.
-- The release-one rules are fixed: private Base room, Base map, standard dice, ten victory points, and no turn timer. The host may change only the maximum seat count between three and four. At least three active players are required to start. Seats are numbered 0–3, with the creator initially in seat 0.
-- A player who leaves may rejoin while the room is joinable and a seat remains. A player kicked by the host cannot rejoin that room with the same Auth identity. Anonymous Auth does not give a recovery route after browser storage is cleared.
+- Rooms are private Base games with standard dice and ten victory points. The host chooses three to six seats and a 60, 90, 120, or 180 second turn timer before each match; 90 seconds is the default. Three or four seats select the standard map and require at least three active players to start. Five or six seats select the expanded map and require at least five. Seats are numbered 0–5, with the creator initially in seat 0.
+- A player who leaves may rejoin while the room is joinable and a seat remains. A player kicked by the host cannot rejoin that room with the same Auth identity. Account-based sign-in should restore the same seat after browser storage is cleared.
 
 ## Room states
 
@@ -38,11 +38,11 @@ Use `expectedRevision: 0` for `CREATE_ROOM` and `JOIN_ROOM`; the latter sends `c
 
 | Command | Who and when | Required payload or field | Effect |
 | --- | --- | --- | --- |
-| `CREATE_ROOM` | Authenticated user | `displayName` (1–24 trimmed characters); optional `maxPlayers` (3 or 4) | Create room and host membership; at most ten rooms per user per hour. |
+| `CREATE_ROOM` | Authenticated user | `displayName` (1–24 trimmed characters); optional `maxPlayers` (3–6) and `turnTimerSeconds` (60, 90, 120, or 180) | Create room and host membership; at most ten rooms per user per hour. |
 | `JOIN_ROOM` | Authenticated code holder; `waiting` or `completed` | `code`, `displayName` | Take an available seat. An active member joining again gets the existing room. |
-| `SET_CONFIG` | Host; `waiting` or `completed` | `maxPlayers`: 3 or 4 | Change capacity if it can still fit the active roster; compact an occupied seat 3 into a vacant lower seat when shrinking to three; reset guest readiness. |
+| `SET_CONFIG` | Host; `waiting` or `completed` | `maxPlayers`: 3–6, or `turnTimerSeconds`: 60, 90, 120, or 180 | Change capacity or timer; choose the matching map, compact out-of-range occupied seats when shrinking, and reset guest readiness. |
 | `SET_READY` | Active guest; `waiting` or `completed` | `ready`: boolean | Set own readiness. |
-| `START_GAME` | Host; `waiting` or `completed` | No payload | Require 3–4 active players and every guest ready; create server-owned game and private player views. |
+| `START_GAME` | Host; `waiting` or `completed` | No payload | Require at least three players for the standard map or five for the expanded map, with every guest ready; create server-owned game and private player views. |
 | `SEND_CHAT` | Active member; `waiting`, `in_game`, or `completed` | `message`: 1–500 trimmed characters | Append member-visible text event; at most one message per sender every three seconds. |
 | `KICK_MEMBER` | Host; `waiting` or `completed` | `userId`: active guest UUID | Remove guest's active membership and prevent same identity rejoining. |
 | `LEAVE_ROOM` | Active member; `waiting` or `completed` | No payload | Release seat. If host leaves, earliest joined remaining member becomes host; if nobody remains, close. |

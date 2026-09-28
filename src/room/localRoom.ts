@@ -1,4 +1,4 @@
-export type PlayerColor = "coral" | "sky" | "mint" | "violet";
+export type PlayerColor = "coral" | "sky" | "mint" | "violet" | "gold" | "teal";
 export type RoomStatus = "waiting" | "in_game" | "completed" | "closed";
 
 export interface RoomPlayer {
@@ -10,11 +10,11 @@ export interface RoomPlayer {
 }
 
 export interface RoomSettings {
-  maxPlayers: 3 | 4;
+  maxPlayers: 3 | 4 | 5 | 6;
   pointsToWin: 10;
-  turnTimerSeconds: null;
+  turnTimerSeconds: 60 | 90 | 120 | 180 | null;
   mode: "base";
-  map: "base";
+  map: "base" | "large";
   private: true;
 }
 
@@ -48,7 +48,7 @@ export interface LocalIdentity {
 const STORAGE_PREFIX = "harbor-table-room-v1:";
 const IDENTITY_KEY = "harbor-table-identity-v1";
 const CHANNEL_NAME = "harbor-table-room-events";
-const COLORS: PlayerColor[] = ["coral", "sky", "mint", "violet"];
+const COLORS: PlayerColor[] = ["coral", "sky", "mint", "violet", "gold", "teal"];
 const CODE_ALPHABET = "0123456789ABCDEF";
 
 function roomKey(code: string): string {
@@ -152,7 +152,7 @@ export function createRoom(identity: LocalIdentity): RoomView {
     settings: {
       maxPlayers: 4,
       pointsToWin: 10,
-      turnTimerSeconds: null,
+      turnTimerSeconds: 90,
       mode: "base",
       map: "base",
       private: true,
@@ -188,7 +188,7 @@ export function joinRoom(codeInput: string, identity: LocalIdentity): RoomView {
     throw new RoomActionError("This room is full.");
   const usedColors = new Set(room.players.map((player) => player.color));
   const color =
-    COLORS.find((candidate) => !usedColors.has(candidate)) ?? "violet";
+    COLORS.find((candidate) => !usedColors.has(candidate)) ?? "teal";
   return writeRoom({
     ...room,
     players: [
@@ -218,7 +218,7 @@ function mutateRoom(
 export function updateSeats(
   code: string,
   actorId: string,
-  maxPlayers: 3 | 4,
+  maxPlayers: 3 | 4 | 5 | 6,
 ): RoomView {
   return mutateRoom(code, (room) => {
     if (room.hostId !== actorId)
@@ -232,11 +232,26 @@ export function updateSeats(
     if (room.settings.maxPlayers === maxPlayers) return room;
     return {
       ...room,
-      settings: { ...room.settings, maxPlayers },
+      settings: { ...room.settings, maxPlayers, map: maxPlayers >= 5 ? "large" : "base" },
       players: room.players.map((player) => ({
         ...player,
         ready: player.id === room.hostId,
       })),
+    };
+  });
+}
+
+export function updateTurnTimer(code: string, actorId: string, seconds: 60 | 90 | 120 | 180): RoomView {
+  return mutateRoom(code, (room) => {
+    if (room.hostId !== actorId || !["waiting", "completed"].includes(room.status))
+      throw new RoomActionError("Only the host can change the timer before a match.");
+    if (![60, 90, 120, 180].includes(seconds))
+      throw new RoomActionError("Choose a valid turn timer.");
+    if (room.settings.turnTimerSeconds === seconds) return room;
+    return {
+      ...room,
+      settings: { ...room.settings, turnTimerSeconds: seconds },
+      players: room.players.map((player) => ({ ...player, ready: player.id === room.hostId })),
     };
   });
 }
@@ -263,7 +278,7 @@ export function setReady(
 export function canStart(room: RoomView): boolean {
   return (
     (room.status === "waiting" || room.status === "completed") &&
-    room.players.length >= 3 &&
+    room.players.length >= (room.settings.maxPlayers >= 5 ? 5 : 3) &&
     room.players.every((player) => player.ready)
   );
 }

@@ -1,5 +1,5 @@
 import { bankTradeRatio, legalCityVertices, legalRoadEdges, legalSettlementVertices, legalSetupRoadEdges, legalSetupSettlementVertices, longestRoadLength, resourceTotal, scoreFor, COSTS, GameRuleError } from './game.ts';
-import { RESOURCES, type Board, type Building, type DevelopmentCard, type EdgeId, type GamePhase, type GameState, type HexId, type PendingTrade, type PlayerId, type Resource, type ResourceCounts, type VertexId } from './types.ts';
+import { RESOURCES, type Board, type Building, type DevelopmentCard, type EdgeId, type GameActionSummary, type GamePhase, type GameState, type HexId, type PendingTrade, type PlayerId, type Resource, type ResourceCounts, type VertexId } from './types.ts';
 
 export interface LegalMoves {
   setupSettlementVertices: VertexId[];
@@ -15,6 +15,9 @@ export interface LegalMoves {
   canBuyDevelopment: boolean;
   canOfferTrade: boolean;
   canEndTurn: boolean;
+  canRequestSpecialBuild: boolean;
+  specialBuildRequested: boolean;
+  canPassSpecialBuild: boolean;
   discardCount: number;
   canAcceptTrade: boolean;
   canRejectTrade: boolean;
@@ -49,6 +52,11 @@ export interface GameView {
   phase: GamePhase;
   activePlayerId: PlayerId;
   turn: number;
+  specialBuildRequested: PlayerId[];
+  turnTimerSeconds: number | null;
+  turnDeadlineAt: string | null;
+  lastTimeoutPlayerId: PlayerId | null;
+  recentActions: GameActionSummary[];
   lastRoll: [number, number] | null;
   longestRoadHolderId: PlayerId | null;
   largestArmyHolderId: PlayerId | null;
@@ -69,6 +77,8 @@ export function legalMoves(state: GameState, viewerId: PlayerId): LegalMoves {
   const active = state.activePlayerId === viewerId;
   const noTrade = !state.pendingTrade;
   const action = active && state.phase === 'action' && noTrade;
+  const specialBuild = active && state.phase === 'special-build' && noTrade;
+  const mayBuild = action || specialBuild;
   const roadBuilding = active && state.phase === 'road-building' && noTrade;
   const mayPlayDevelopment = active && noTrade && !state.developmentPlayedThisTurn &&
     (state.phase === 'pre-roll' || state.phase === 'action');
@@ -76,9 +86,9 @@ export function legalMoves(state: GameState, viewerId: PlayerId): LegalMoves {
   return {
     setupSettlementVertices: active && state.phase === 'setup-settlement' ? legalSetupSettlementVertices(state) : [],
     setupRoadEdges: active && state.phase === 'setup-road' ? legalSetupRoadEdges(state) : [],
-    roadEdges: (roadBuilding || action && has(player.resources, COSTS.road)) ? legalRoadEdges(state, viewerId) : [],
-    settlementVertices: action && has(player.resources, COSTS.settlement) ? legalSettlementVertices(state, viewerId) : [],
-    cityVertices: action && has(player.resources, COSTS.city) ? legalCityVertices(state, viewerId) : [],
+    roadEdges: (roadBuilding || mayBuild && has(player.resources, COSTS.road)) ? legalRoadEdges(state, viewerId) : [],
+    settlementVertices: mayBuild && has(player.resources, COSTS.settlement) ? legalSettlementVertices(state, viewerId) : [],
+    cityVertices: mayBuild && has(player.resources, COSTS.city) ? legalCityVertices(state, viewerId) : [],
     robberHexes: active && state.phase === 'robber-move'
       ? Object.keys(state.board.hexes).filter((hexId) => hexId !== state.robberHexId) : [],
     robberVictimIds: active && state.phase === 'robber-steal' ? [...state.robberVictimIds] : [],
@@ -89,9 +99,13 @@ export function legalMoves(state: GameState, viewerId: PlayerId): LegalMoves {
       player.resources[resource] >= bankTradeRatio(state, viewerId, resource) &&
       RESOURCES.some((other) => other !== resource && state.bank[other] > 0)) : [],
     canRoll: active && state.phase === 'pre-roll' && noTrade,
-    canBuyDevelopment: action && state.developmentDeck.length > 0 && has(player.resources, COSTS.development),
+    canBuyDevelopment: mayBuild && state.developmentDeck.length > 0 && has(player.resources, COSTS.development),
     canOfferTrade: action,
     canEndTurn: action,
+    canRequestSpecialBuild: state.players.length >= 5 && state.turn > 0 && !active &&
+      !['setup-settlement', 'setup-road', 'special-build', 'completed'].includes(state.phase),
+    specialBuildRequested: (state.specialBuildRequested ?? []).includes(viewerId),
+    canPassSpecialBuild: specialBuild,
     discardCount: state.phase === 'discard' ? state.pendingDiscards[viewerId] ?? 0 : 0,
     canAcceptTrade: trade?.toPlayerId === viewerId && has(player.resources, trade.want) &&
       has(state.players.find((candidate) => candidate.id === trade.fromPlayerId)!.resources, trade.give),
@@ -134,6 +148,11 @@ export function projectGame(state: GameState, viewerId: PlayerId): GameView {
     phase: state.phase,
     activePlayerId: state.activePlayerId,
     turn: state.turn,
+    specialBuildRequested: [...(state.specialBuildRequested ?? [])],
+    turnTimerSeconds: state.turnTimerSeconds,
+    turnDeadlineAt: state.turnDeadlineAt,
+    lastTimeoutPlayerId: state.lastTimeoutPlayerId,
+    recentActions: structuredClone(state.recentActions),
     lastRoll: state.lastRoll ? [...state.lastRoll] as [number, number] : null,
     longestRoadHolderId: state.longestRoadHolderId,
     largestArmyHolderId: state.largestArmyHolderId,

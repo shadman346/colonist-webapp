@@ -40,7 +40,8 @@ type RoomRow = {
   invite_code: string;
   host_user_id: string;
   status: RoomView["status"];
-  max_players: 3 | 4;
+  max_players: 3 | 4 | 5 | 6;
+  turn_timer_seconds: 60 | 90 | 120 | 180;
   revision: number;
   created_at: string;
 };
@@ -63,7 +64,7 @@ type EventRow = {
 
 type GameRow = { id: string };
 
-const colors: PlayerColor[] = ["coral", "sky", "mint", "violet"];
+const colors: PlayerColor[] = ["coral", "sky", "mint", "violet", "gold", "teal"];
 const errorMessages: Record<string, string> = {
   INVALID_NAME: "Enter a display name with up to 24 characters.",
   ROOM_NOT_FOUND: "Room not found. Check the code and try again.",
@@ -107,10 +108,19 @@ export function getClient(): SupabaseClient {
     );
   }
   client = createClient(url, key, {
+    global: {
+      fetch: (input, init) => fetch(input, {
+        ...init,
+        signal: init?.signal
+          ? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
+      }),
+    },
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: false,
+      detectSessionInUrl: true,
+      flowType: "pkce",
     },
   });
   return client;
@@ -127,13 +137,7 @@ export async function authenticatedActor(): Promise<string> {
         if (error || !data.user) throw error ?? new Error("Session unavailable.");
         return data.user.id;
       }
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error || !data.user) {
-        throw new RoomActionError(
-          error?.message ?? "Anonymous sign-in is unavailable in this Supabase project.",
-        );
-      }
-      return data.user.id;
+      throw new RoomActionError("Sign in with your email to create or join a room.");
     })();
   }
   try {
@@ -145,8 +149,40 @@ export async function authenticatedActor(): Promise<string> {
 }
 
 export async function resolveIdentity(): Promise<LocalIdentity> {
-  const id = await authenticatedActor();
-  return { id, name: getLocalIdentity().name };
+  const { data, error } = await getClient().auth.getSession();
+  if (error) throw error;
+  if (!data.session) return { id: "", name: getLocalIdentity().name };
+  return { id: await authenticatedActor(), name: getLocalIdentity().name };
+}
+
+export async function signInWithPassword(email: string, password: string): Promise<LocalIdentity> {
+  const normalized = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new RoomActionError("Enter a valid email address.");
+  }
+  const { error } = await getClient().auth.signInWithPassword({ email: normalized, password });
+  if (error) throw new RoomActionError(error.message);
+  actorPromise = null;
+  return resolveIdentity();
+}
+
+export async function createAccount(email: string, password: string): Promise<LocalIdentity> {
+  const normalized = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new RoomActionError("Enter a valid email address.");
+  }
+  if (password.length < 8) throw new RoomActionError("Use at least 8 characters for your password.");
+  const { data, error } = await getClient().auth.signUp({ email: normalized, password });
+  if (error) throw new RoomActionError(error.message);
+  if (!data.session) throw new RoomActionError("Account created, but sign-in needs confirmation. Check project email settings.");
+  actorPromise = null;
+  return resolveIdentity();
+}
+
+export async function signOut(): Promise<void> {
+  const { error } = await getClient().auth.signOut();
+  if (error) throw new RoomActionError(error.message);
+  actorPromise = null;
 }
 
 export async function saveIdentity(name: string): Promise<LocalIdentity> {
@@ -194,7 +230,7 @@ async function roomById(roomId: string): Promise<RoomView> {
   const supabase = getClient();
   const { data: row, error: roomError } = await supabase
     .from("rooms")
-    .select("id,invite_code,host_user_id,status,max_players,revision,created_at")
+    .select("id,invite_code,host_user_id,status,max_players,turn_timer_seconds,revision,created_at")
     .eq("id", roomId)
     .single();
   if (roomError || !row) {
@@ -250,7 +286,7 @@ async function roomFromRow(row: RoomRow): Promise<RoomView> {
     .map((member) => ({
       id: member.user_id,
       name: member.display_name,
-      color: colors[member.seat_no ?? 0] ?? "violet",
+      color: colors[member.seat_no ?? 0] ?? "teal",
       ready: member.is_ready,
       joinedAt: Date.parse(member.joined_at),
     }));
@@ -273,9 +309,9 @@ async function roomFromRow(row: RoomRow): Promise<RoomView> {
     settings: {
       maxPlayers: row.max_players,
       pointsToWin: 10,
-      turnTimerSeconds: null,
+      turnTimerSeconds: row.turn_timer_seconds,
       mode: "base",
-      map: "base",
+      map: row.max_players >= 5 ? "large" : "base",
       private: true,
     },
     players,
@@ -291,7 +327,7 @@ export async function readRoom(codeInput: string): Promise<RoomView | null> {
   await authenticatedActor();
   const { data, error } = await getClient()
     .from("rooms")
-    .select("id,invite_code,host_user_id,status,max_players,revision,created_at")
+    .select("id,invite_code,host_user_id,status,max_players,turn_timer_seconds,revision,created_at")
     .eq("invite_code", code)
     .maybeSingle();
   if (error) throw new RoomActionError(error.message);
@@ -365,7 +401,7 @@ export async function createRoom(identity: LocalIdentity): Promise<RoomView> {
         actionId: crypto.randomUUID(),
         type: "CREATE_ROOM",
         expectedRevision: 0,
-        payload: { displayName: identity.name, maxPlayers: 4 },
+        payload: { displayName: identity.name, maxPlayers: 4, turnTimerSeconds: 90 },
       },
       response: null,
     };
@@ -420,8 +456,12 @@ export async function joinRoom(codeInput: string, identity: LocalIdentity): Prom
   }
 }
 
-export function updateSeats(room: RoomView, maxPlayers: 3 | 4): Promise<RoomView> {
+export function updateSeats(room: RoomView, maxPlayers: 3 | 4 | 5 | 6): Promise<RoomView> {
   return memberCommand(room, "SET_CONFIG", { maxPlayers });
+}
+
+export function updateTurnTimer(room: RoomView, turnTimerSeconds: 60 | 90 | 120 | 180): Promise<RoomView> {
+  return memberCommand(room, "SET_CONFIG", { turnTimerSeconds });
 }
 
 export function setReady(room: RoomView, ready: boolean): Promise<RoomView> {
@@ -449,40 +489,78 @@ export function kickMember(room: RoomView, userId: string): Promise<RoomView> {
   return memberCommand(room, "KICK_MEMBER", { userId });
 }
 
-export function onRoomChange(codeInput: string, callback: () => void): () => void {
+type RoomListener = {
+  callback: () => void;
+  onStatus?: (status: "live" | "reconnecting") => void;
+};
+type RoomSubscription = {
+  listeners: Set<RoomListener>;
+  channel: ReturnType<SupabaseClient["channel"]> | null;
+  status: "connecting" | "live" | "reconnecting";
+  retryTimer: number | null;
+};
+
+// The room shell and match board observe the same topic. Realtime closes an
+// existing channel when another channel with that topic joins, so share one.
+const roomSubscriptions = new Map<string, RoomSubscription>();
+
+export function onRoomChange(codeInput: string, callback: () => void,
+  onStatus?: (status: "live" | "reconnecting") => void, fallbackMs = 5_000): () => void {
   const code = normalizeCode(codeInput);
-  let active = true;
-  let channel: ReturnType<SupabaseClient["channel"]> | null = null;
-  // Realtime can be unavailable or miss a revision during a network change.
-  // The room read remains authoritative; polling gives an open tab a recovery
-  // path even when no reconnect event is delivered.
+  let subscription = roomSubscriptions.get(code);
+  if (!subscription) {
+    subscription = { listeners: new Set(), channel: null, status: "connecting", retryTimer: null };
+    roomSubscriptions.set(code, subscription);
+    const current = subscription;
+    const signal = () => { for (const listener of current.listeners) listener.callback(); };
+    const statusChange = (status: "live" | "reconnecting") => {
+      current.status = status;
+      for (const listener of current.listeners) listener.onStatus?.(status);
+    };
+    const connect = async () => {
+      current.retryTimer = null;
+      await authenticatedActor();
+      const supabase = getClient();
+      const { data, error } = await supabase.from("rooms").select("id")
+        .eq("invite_code", code).maybeSingle();
+      if (error || !data) throw error ?? new Error("Room unavailable.");
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw sessionError ?? new Error("Session unavailable.");
+      await supabase.realtime.setAuth(sessionData.session.access_token);
+      if (roomSubscriptions.get(code) !== current) return;
+      current.channel = supabase
+        .channel(`room:${data.id}`, { config: { private: true } })
+        .on("broadcast", { event: "revision" }, signal)
+        .on("broadcast", { event: "game-revision" }, signal)
+        .subscribe((status) => {
+          if (roomSubscriptions.get(code) !== current) return;
+          if (status === "SUBSCRIBED") { statusChange("live"); signal(); }
+          else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            statusChange("reconnecting");
+          }
+        });
+    };
+    const start = () => void connect().catch(() => {
+      if (roomSubscriptions.get(code) !== current) return;
+      statusChange("reconnecting");
+      current.retryTimer = window.setTimeout(start, 2_000);
+    });
+    start();
+  }
+  const listener: RoomListener = { callback, onStatus };
+  subscription.listeners.add(listener);
+  if (subscription.status !== "connecting") onStatus?.(subscription.status);
+  // Polling repairs missed messages or a disconnected socket.
   const fallback = window.setInterval(() => {
-    if (active && document.visibilityState === "visible") callback();
-  }, 15_000);
-  void (async () => {
-    await authenticatedActor();
-    const supabase = getClient();
-    const { data, error } = await supabase
-      .from("rooms")
-      .select("id")
-      .eq("invite_code", code)
-      .maybeSingle();
-    if (error || !data || !active) return;
-    await supabase.realtime.setAuth();
-    if (!active) return;
-    channel = supabase
-      .channel(`room:${data.id}`, { config: { private: true } })
-      .on("broadcast", { event: "revision" }, callback)
-      .on("broadcast", { event: "game-revision" }, callback)
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED" && active) callback();
-      });
-  })().catch(() => {
-    // Foreground refresh and command responses still fetch the latest state.
-  });
+    if (document.visibilityState === "visible") callback();
+  }, fallbackMs);
   return () => {
-    active = false;
     window.clearInterval(fallback);
-    if (channel) void getClient().removeChannel(channel);
+    subscription.listeners.delete(listener);
+    if (subscription.listeners.size === 0) {
+      roomSubscriptions.delete(code);
+      if (subscription.retryTimer !== null) window.clearTimeout(subscription.retryTimer);
+      if (subscription.channel) void getClient().removeChannel(subscription.channel);
+    }
   };
 }

@@ -27,7 +27,7 @@ export async function verifiedActor(req: Request): Promise<string | null> {
   return error ? null : data.user?.id ?? null
 }
 
-const localOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173']
+const localOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173']
 const allowedOrigins = new Set([
   ...localOrigins,
   ...(Deno.env.get('APP_ORIGINS') ?? '').split(',').map((s) => s.trim()).filter(Boolean),

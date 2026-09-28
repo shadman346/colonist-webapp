@@ -11,7 +11,7 @@ const types = new Set([
   'CREATE_ROOM', 'JOIN_ROOM', 'SET_CONFIG', 'SET_READY',
   'START_GAME', 'SEND_CHAT', 'KICK_MEMBER', 'LEAVE_ROOM', 'CLOSE_ROOM',
 ])
-const colors = ['#e45242', '#3495d0', '#e9ab36', '#7b57bd']
+const colors = ['#e45242', '#3495d0', '#e9ab36', '#7b57bd', '#bf8325', '#168b86']
 
 type Body = {
   actionId: string
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     if (receiptError) return databaseError(req, receiptError.message)
     if (receipt) return json(req, receipt)
     const { data: room, error: roomError } = await admin.from('rooms')
-      .select('id,host_user_id,revision,status,max_players,victory_points').eq('id', body.roomId).maybeSingle()
+      .select('id,host_user_id,revision,status,max_players,victory_points,turn_timer_seconds').eq('id', body.roomId).maybeSingle()
     if (roomError) return json(req, { error: 'SERVER_ERROR' }, 500)
     if (!room) return json(req, { error: 'ROOM_NOT_FOUND' }, 404)
     if (room.host_user_id !== actor || !['waiting', 'completed'].includes(room.status)) {
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       .select('user_id,display_name,seat_no,is_ready,status')
       .eq('room_id', body.roomId).eq('status', 'active').order('seat_no')
     if (membersError || !members) return json(req, { error: 'SERVER_ERROR' }, 500)
-    if (members.length < 3 || members.length > room.max_players) {
+    if (members.length < (room.max_players >= 5 ? 5 : 3) || members.length > room.max_players) {
       return json(req, { error: 'PLAYERS_NOT_READY' }, 409)
     }
     // No browser-supplied seed, state, or projection is ever accepted.
@@ -81,8 +81,10 @@ Deno.serve(async (req) => {
         id: m.user_id, name: m.display_name, color: colors[m.seat_no],
       })),
       seed,
-      developmentDeck: createShuffledDevelopmentDeck(webCryptoRandomSource()),
+      developmentDeck: createShuffledDevelopmentDeck(webCryptoRandomSource(), members.length),
       victoryPointsToWin: room.victory_points,
+      turnTimerSeconds: room.turn_timer_seconds,
+      startedAt: new Date().toISOString(),
     })
     const views = Object.fromEntries(members.map((m) => [m.user_id, projectGame(state, m.user_id)]))
     const { data, error } = await admin.rpc('start_room_game', {

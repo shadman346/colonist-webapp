@@ -1,19 +1,24 @@
 # Base game rules contract — v1
 
-**Status:** implemented in `engine/`; 28 September 2026. This document defines the first private three- or four-friend match. Room creation, seat identity, readiness, persistence, command revision, and rematch belong to the room/backend contract. The engine accepts a fixed ordered list of players after the host starts.
+**Status:** implemented in `engine/`; 28 September 2026. This document defines private three- to six-friend matches. The five/six-player paths still need a complete manual match. Room creation, seat identity, readiness, persistence, command revision, and rematch belong to the room/backend contract. The engine accepts a fixed ordered list of players after the host starts.
 
-**Sources:** [CATAN Base game rulebooks](https://www.catan.com/understand-catan/game-rules), [2020 Base rules PDF](https://www.catan.com/sites/default/files/2021-06/catan_base_rules_2020_200707.pdf), and [CATAN FAQ](https://www.catan.com/faq). The official materials establish the Base mechanics; this document also names digital interaction choices so implementation is unambiguous. This is a rules-compatible friends game and does not imply use of official CATAN marks or artwork.
+**Sources:** [CATAN Base game rulebooks](https://www.catan.com/understand-catan/game-rules), [2020 Base rules PDF](https://www.catan.com/sites/default/files/2021-06/catan_base_rules_2020_200707.pdf), [CATAN FAQ](https://www.catan.com/faq), and [Colonist five/six-player rules](https://colonist.io/catan-rules/5-6-player). The materials establish the Base and expanded mechanics; this document also names digital interaction choices so implementation is unambiguous. This is a rules-compatible friends game and does not imply use of official CATAN marks or artwork.
 
 ## 1. Scope and invariants
 
-- Three or four unique, human player IDs, fixed seat order, no bots. The first ID begins setup and the first normal turn.
+- Three to six unique, human player IDs, fixed seat order, no bots. The first ID begins setup and the first normal turn.
 - Base island: 19 terrain hexes, 54 intersections, 72 edges; 4 wood, 4 wool, 4 grain, 3 brick, 3 ore, 1 desert. Eighteen number tokens have two each of 3–11 (excluding 7), one 2, one 12; the two 6s and two 8s are not adjacent. Nine distinct coastline ports: four generic 3:1 and one 2:1 for each resource.
 - Server supplies an unpredictable board seed. `createGame` deterministically shuffles the **public** terrain, numbers, and ports from it. The **hidden** 25-card development deck is shuffled independently with a cryptographically secure server random source and passed to `createGame` as `developmentDeck`. A public board must never allow an opponent to infer deck order. The board seed and deck remain server-only. IDs are stable independent of the shuffled content: `h:q,r`, `v:x,y`, and `e:v1|v2`.
 - Bank starts with 19 of each resource. Each player has 15 roads, 5 settlements, and 4 cities. Every transition conserves all 95 resource cards and respects piece limits.
 - Costs: road = 1 wood + 1 brick; settlement = 1 wood + 1 brick + 1 wool + 1 grain; city = 2 grain + 3 ore; development card = 1 wool + 1 grain + 1 ore.
 - Development deck = 14 Knights, 5 hidden victory points, 2 Road Building, 2 Year of Plenty, 2 Monopoly.
+- For five or six players, use a 30-hex expanded island with two deserts, 28 number tokens, six separated red 6/8 tokens, and eleven coastline ports. The bank starts with 24 of each resource. The independently shuffled 34-card development deck has 20 Knights, 5 hidden victory points, and 3 each of Road Building, Year of Plenty, and Monopoly. Piece supplies remain per player.
 - Ten total victory points wins. Settlement = 1, city = 2, Longest Road = 2, Largest Army = 2, each held VP card = 1. Only the active player can win, and a VP card acquired this turn counts for a win this turn.
-- Standard two dice; no balanced dice, friendly robber, timer, harbor variants, or extra map rules in v1.
+- Standard two dice; no balanced dice, friendly robber, harbor variants, or extra map rules in v1. The host selects a 60, 90, 120, or 180 second turn timer before each match; 90 seconds is the default.
+
+### Turn deadline
+
+The server records one UTC deadline for each setup placement pair, each normal turn, and each Special Build opportunity. A settlement and its road share one setup timer. Placing that road or ending a normal turn starts a fresh deadline for the next seat; reconnecting never resets it. The timer setting is locked while a match runs and can be changed before a rematch. Any connected room member may request expiration, but the server checks its own current time and atomically commits the result. Normal moves arriving at or after the deadline are rejected. On expiry, the server chooses the first legal setup settlement and adjacent road if needed. For a normal turn it clears a pending trade, finishes forced discards and robber choices with valid automatic moves, rolls if still necessary, then ends the turn. The resulting view and revision go to every seat through the same private live-update path as an ordinary move. When no participant is connected, expiration is processed when a participant returns; the displayed deadline remains expired until then.
 
 ## 2. Phases and exact action order
 
@@ -27,9 +32,12 @@
 | `robber-steal` | Current turn seat | `choose-robber-victim` | Prior `pre-roll` or `action` |
 | `road-building` | Current turn seat | `build-road` at zero cost, up to two sequential placements | Prior `pre-roll` or `action` |
 | `action` | Current turn seat, except a direct trade recipient may respond | Build, buy, bank trade, offer/cancel trade, play one eligible development card, `end-turn`; recipient may accept/reject offered trade | `pre-roll` of next seat, a forced card subphase, or `completed` |
+| `special-build` | Next requested seat clockwise in a five/six-player game | Build a road, settlement, or city; buy a development card; `pass-special-build` | Next requester, then the next regular seat |
 | `completed` | None | None | Terminal; backend may create a distinct rematch |
 
 Opening order is forward then reverse: for A/B/C/D it is A, B, C, D, D, C, B, A. Each placement consists of a settlement then one incident empty road. A setup settlement target must have at least one free incident edge so the required road can always be placed. Starting resources are paid only for each player's **second** settlement, one from each adjacent non-desert hex. Setup settlements need no road connection, but all settlements obey the distance rule.
+
+In a five/six-player match, every player except the active regular player can request or cancel a Special Build during that player's turn, including a forced robber/discard step. When that turn ends, requested players receive a build opportunity clockwise. Each opportunity has its own configured deadline; expiry passes to the next requester. No trading, development card play, or win is allowed during Special Build. A player may receive a Special Build immediately before their own regular turn. A hidden victory point bought there can win on their regular turn.
 
 Before the roll, an eligible development card may be played. A Knight's robber sequence returns to `pre-roll`, so the player still rolls. During the normal turn, trading and building may be interleaved; this is the combined trade/build variant described by CATAN and matches a practical digital action tray. The player ends the turn explicitly. A pending player trade blocks other actions until accepted, rejected, or canceled.
 
@@ -84,6 +92,8 @@ Scores are recalculated after actions that can affect them. An active player who
 | `accept-trade` / `reject-trade` | `tradeId` | Only recipient; accept rechecks both hands. |
 | `cancel-trade` | `tradeId` | Only active offer sender. |
 | `end-turn` | None | Active action phase with no pending trade; next seat goes to pre-roll. |
+| `request-special-build` | `requested`: boolean | Any other player during a five/six-player regular turn reserves or cancels an end-of-turn build opportunity. |
+| `pass-special-build` | None | Active Special Build player passes; next requester or regular turn begins. |
 
 `applyGameCommand(state, command, outcome?)` returns a new `GameState`; it throws `GameRuleError(code, message)` on failure. The backend must treat the result as an indivisible update and must never send a `GameState` to a browser. `randomOutcomeForCommand` uses a server-provided integer source. `createGame` takes an ordered player list, board seed, and independently shuffled development deck. `projectGame(state, viewerId)` returns the per-seat `GameView`.
 
@@ -109,6 +119,6 @@ Typical stable codes include `UNKNOWN_PLAYER`, `NOT_YOUR_TURN`, `WRONG_PHASE`, `
 
 No engine command directly edits a room or persists an event. Room service owns create/join/leave, host authority, ready/start, reconnect, close, and rematch. A room starts exactly one `createGame` transition. The backend stores the private canonical state and per-member projections, uses a transaction for command+revision+event+view, and broadcasts only an updated revision. The browser fetches its own authorized view after that signal or on reconnect.
 
-## 9. Test matrix and remaining work
+## 9. Prior evidence and manual validation still required
 
-The engine tests cover graph count/ports/red spacing and deterministic board seeds, independent deck input, setup order and initial resources, invalid command immutability, seven/discard/robber sequence, server-weighted theft, view secrecy, paid road placement, ports, bank scarcity, direct trade, progress cards, army ties, immediate hidden-card win, and deterministic command replay. A complete-match simulation now reaches 10 points using only legal opening placements, rolls, development purchases, three played Knights, a city, a seven with discards, robber moves, and turn ends; its full command trace replays to the identical final state. Additional integration tests must cover database membership, repeated `actionId`, stale revision, concurrent accept/cancel, cross-browser reconnect, and host start/rematch. Four-browser playtesting remains necessary before calling the match release-ready.
+Before the manual-only validation rule, existing engine checks covered graph count/ports/red spacing and deterministic board seeds, independent deck input, setup order and initial resources, invalid command immutability, seven/discard/robber sequence, server-weighted theft, view secrecy, paid road placement, ports, bank scarcity, direct trade, progress cards, army ties, immediate hidden-card win, and deterministic command replay. A previous complete-match simulation reached 10 points and replayed to the same final state. These are historical results, not a requirement to add or run more automated tests. Manually verify database membership, repeated `actionId`, stale revision, concurrent accept/cancel, cross-browser reconnect, host start/rematch, and the full match in separate browsers before calling it release-ready. Record the steps and observed results.

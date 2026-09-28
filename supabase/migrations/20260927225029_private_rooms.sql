@@ -13,11 +13,11 @@ create table public.rooms (
   mode text not null default 'base' check (mode = 'base'),
   map text not null default 'base' check (map = 'base'),
   victory_points smallint not null default 10 check (victory_points = 10),
-  turn_timer_seconds smallint,
+  turn_timer_seconds smallint not null default 90,
   revision bigint not null default 1 check (revision >= 1),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint turn_timer_disabled check (turn_timer_seconds is null)
+  constraint valid_turn_timer check (turn_timer_seconds in (60, 90, 120, 180))
 );
 
 create table public.room_members (
@@ -127,6 +127,7 @@ using ((select private.is_room_member(room_id)));
 -- Explicit grants work whether automatic Data API exposure is enabled or not.
 revoke all on public.rooms, public.room_members, public.games, public.game_views, public.room_events from anon, authenticated;
 grant select on public.rooms, public.room_members, public.games, public.game_views, public.room_events to authenticated;
+grant select on public.rooms, public.room_members, public.games, public.game_views, public.room_events to service_role;
 
 -- Do not ALTER realtime.messages: Supabase owns that table and already enables
 -- RLS. Only a member may subscribe to room:<uuid>; clients cannot broadcast.

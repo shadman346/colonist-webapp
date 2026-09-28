@@ -6,30 +6,22 @@ import {
   type ReactNode,
 } from "react";
 import {
-  ArrowRight,
   BookOpen,
   Check,
-  ChevronRight,
   CircleHelp,
-  Copy,
-  DoorOpen,
   Globe2,
   Home,
   Info,
-  Link2,
   LockKeyhole,
-  Map as MapIcon,
-  MessageCircle,
   Play,
   Send,
-  ShieldCheck,
-  Users,
   X,
 } from "lucide-react";
 import BoardPreview from "./BoardPreview";
 import MatchView from "./MatchView";
 import {
   canStart,
+  createAccount,
   createRoom,
   getIdentity,
   isLocalPreview,
@@ -42,16 +34,70 @@ import {
   resolveIdentity,
   roomLink,
   saveIdentity,
+  signInWithPassword,
   sendChat,
   setReady,
+  signOut,
   startRoom,
   updateSeats,
+  updateTurnTimer,
   type LocalIdentity,
   type PlayerColor,
   type RoomView,
 } from "./room/roomService";
 
 type Page = "rooms" | "board";
+
+function SignInScreen({ onVerified }: { onVerified: (identity: LocalIdentity) => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    if (mode === "create" && password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      onVerified(mode === "create"
+        ? await createAccount(email, password)
+        : await signInWithPassword(email, password));
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "Could not sign in.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <section className="sign-in-screen" aria-labelledby="sign-in-heading">
+    <div className="sign-in-card">
+      <LockKeyhole size={28} />
+      <h1 id="sign-in-heading">Play with your friends</h1>
+      <p>Use your email and password to join the same room from any device.</p>
+      <div className="sign-in-tabs" role="tablist" aria-label="Account access">
+        <button type="button" role="tab" aria-selected={mode === "sign-in"} onClick={() => { setMode("sign-in"); setError(""); }}>Sign in</button>
+        <button type="button" role="tab" aria-selected={mode === "create"} onClick={() => { setMode("create"); setError(""); }}>Create account</button>
+      </div>
+      <form onSubmit={(event) => void submit(event)}>
+        <label htmlFor="sign-in-email">Email address</label>
+        <input id="sign-in-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
+        <label htmlFor="sign-in-password">Password</label>
+        <input id="sign-in-password" type="password" autoComplete={mode === "create" ? "new-password" : "current-password"} required minLength={mode === "create" ? 8 : undefined} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "create" ? "At least 8 characters" : "Your password"} />
+        {mode === "create" && <><label htmlFor="confirm-password">Confirm password</label><input id="confirm-password" type="password" autoComplete="new-password" required minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" /></>}
+        <button className="button" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "create" ? "Create account" : "Sign in"}</button>
+      </form>
+      {mode === "create" && <p className="sign-in-hint">No email confirmation is needed. Keep your password safe; email recovery is not available yet.</p>}
+      {error && <p className="sign-in-error" role="alert">{error}</p>}
+    </div>
+  </section>;
+}
 
 function Logo() {
   return (
@@ -111,32 +157,10 @@ function HexArt({
   kind: "mode" | "map" | "private" | "dice" | "clock" | "points";
 }) {
   if (kind === "mode") {
-    return (
-      <div className="hex-art mode-art" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-      </div>
-    );
+    return <div className="hex-art" aria-hidden="true"><img src="/assets/figma/room-hex-cluster.svg" alt="" /></div>;
   }
   if (kind === "map") {
-    return (
-      <div className="hex-art island-art" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
-      </div>
-    );
+    return <div className="hex-art" aria-hidden="true"><img src="/assets/figma/room-hex-cluster.svg" alt="" /></div>;
   }
   if (kind === "private") return <LockKeyhole size={29} strokeWidth={2.5} />;
   if (kind === "dice")
@@ -173,10 +197,12 @@ function App() {
   const [joinError, setJoinError] = useState("");
   const [toast, setToast] = useState("");
   const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const isMember = Boolean(
     room?.players.some((player) => player.id === identity.id),
   );
+  const isSignedIn = Boolean(identity.id && identityResolved);
   const isHost = Boolean(room && room.hostId === identity.id);
   const showBoard = page === "board";
 
@@ -200,7 +226,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!identityResolved) return;
+    if (!identityResolved || !identity.id) return;
     if (!code) {
       setRoom(null);
       return;
@@ -349,8 +375,6 @@ function App() {
     }
   }
 
-  const roomTitle = room && isMember ? `Room ${room.code}` : "Private rooms";
-
   return (
     <div className="app-shell">
       <aside className="nav-rail">
@@ -372,41 +396,62 @@ function App() {
             <div className="nav-hex">
               <span>⬢</span>
             </div>
-            <span>Board</span>
+            <span>Play</span>
           </button>
           <button onClick={() => setHelpOpen(true)} type="button">
             <BookOpen size={27} />
-            <span>How to play</span>
+            <span>Guides</span>
+          </button>
+          <button onClick={() => setSettingsOpen(true)} type="button">
+            <span>Settings</span>
           </button>
         </nav>
         <div className="rail-bottom">
           <Globe2 size={19} />
-          <span>EN</span>
+          <span>{room && isMember ? "EN" : "Guest player"}</span>
         </div>
       </aside>
 
       <main className={`main-content ${showBoard ? "main-game" : ""}`}>
         {!showBoard && (
-          <header className="topbar">
-            <div className="topbar-title">
-              <span className="mobile-brand">
-                <Logo />
-              </span>
-              <span>{roomTitle}</span>
-            </div>
-            <div className="topbar-right">
-              <span className="identity-pill">
-                <span className="identity-dot" />
-                {identity.name || "Guest"}
-              </span>
-              <span className="private-pill">
-                <LockKeyhole size={15} /> Friends only
-              </span>
-            </div>
+          <header className="topbar entry-topbar">
+            {room && isMember ? (
+              <>
+                <div className="entry-identity">
+                  <span>{identity.name || "Guest player"}</span>
+                </div>
+                <span className="entry-topbar-caption">Friends-only room</span>
+                <div className="entry-account-avatar" aria-hidden="true">
+                  <img src="/assets/figma/room-account-avatar.svg" alt="" />
+                  <span>{(identity.name || "Guest player").charAt(0).toUpperCase()}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="entry-identity">
+                  <label className="sr-only" htmlFor="entry-name">Your display name</label>
+                  <input
+                    id="entry-name"
+                    value={name}
+                    maxLength={24}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Guest player"
+                    title="Your display name"
+                  />
+                </div>
+                <span className="entry-topbar-caption">Friends-only room</span>
+                <div className="entry-account-avatar" aria-hidden="true">
+                  <img src="/assets/figma/room-account-avatar.svg" alt="" />
+                  <span>{(name.trim() || "Guest player").charAt(0).toUpperCase()}</span>
+                </div>
+              </>
+            )}
           </header>
         )}
 
-        {showBoard ? (
+        {!identityResolved ? <div className="sign-in-screen"><div className="sign-in-card">Connecting…</div></div> : !isSignedIn ? (
+          <SignInScreen onVerified={(signedIn) => { setIdentity(signedIn); setName(signedIn.name); setToast("Signed in. You can join your friends now."); }} />
+        ) : showBoard ? (
           room && isMember && (room.status === "in_game" || room.status === "completed") ? (
             <MatchView
               room={room}
@@ -438,6 +483,12 @@ function App() {
                 "Player count updated. Friends will need to ready up again.",
               )
             }
+            onTimer={(seconds) =>
+              applyAction(
+                () => updateTurnTimer(room, seconds),
+                "Turn timer updated. Friends will need to ready up again.",
+              )
+            }
             onReady={(ready) =>
               applyAction(() => setReady(room, ready))
             }
@@ -457,8 +508,6 @@ function App() {
           />
         ) : (
           <RoomsEntry
-            name={name}
-            onNameChange={setName}
             onCreate={handleCreate}
             onJoin={() => {
               setJoinError("");
@@ -472,7 +521,7 @@ function App() {
         )}
       </main>
 
-      {joinOpen && (
+      {joinOpen && isSignedIn && (
         <div
           className="modal-backdrop"
           role="presentation"
@@ -483,6 +532,8 @@ function App() {
           <form
             className="dialog join-dialog"
             onSubmit={handleJoin}
+            role="dialog"
+            aria-modal="true"
             aria-labelledby="join-title"
           >
             <div className="dialog-header">
@@ -491,20 +542,7 @@ function App() {
                 <X size={22} />
               </IconButton>
             </div>
-            <p>Enter the code a friend shared with you.</p>
-            <label htmlFor="join-name">Your name</label>
-            <input
-              id="join-name"
-              value={name}
-              maxLength={24}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="How should friends see you?"
-              autoFocus
-            />
-            <div className="input-heading">
-              <label htmlFor="join-code">Room ID</label>
-              <span>{joinCode.length}/16</span>
-            </div>
+            <label htmlFor="join-code">Enter the room ID you want to join</label>
             <input
               id="join-code"
               className="code-input"
@@ -514,9 +552,11 @@ function App() {
                 setJoinCode(normalizeCode(event.target.value));
                 setJoinError("");
               }}
-              placeholder="Example: A1B2C3D4E5F60708"
+              placeholder=""
               autoComplete="off"
+              autoFocus
             />
+            <span className="join-count">{joinCode.length}/16</span>
             {joinError && (
               <p className="form-error" role="alert">
                 {joinError}
@@ -525,17 +565,19 @@ function App() {
             <div className="dialog-actions">
               <button
                 type="button"
-                className="button secondary"
+                className="button join-cancel"
                 onClick={() => setJoinOpen(false)}
+                aria-label="Cancel join"
               >
-                Cancel
+                <X size={27} />
               </button>
               <button
-                className="button primary"
+                className="button join-confirm"
                 disabled={!joinCode || busy}
                 type="submit"
+                aria-label="Confirm join"
               >
-                Join room <ArrowRight size={19} />
+                <Check size={27} />
               </button>
             </div>
           </form>
@@ -567,7 +609,7 @@ function App() {
                 Create a private room and send its link or code to friends.
               </li>
               <li>
-                Choose three or four seats. Friends join and mark themselves
+                Choose three to six seats. Friends join and mark themselves
                 ready.
               </li>
               <li>
@@ -589,6 +631,28 @@ function App() {
           </div>
         </div>
       )}
+      {settingsOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSettingsOpen(false);
+        }}>
+          <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div className="dialog-header">
+              <h2 id="settings-title">Settings</h2>
+              <IconButton label="Close" onClick={() => setSettingsOpen(false)}><X size={22} /></IconButton>
+            </div>
+            <label htmlFor="settings-name">Your display name</label>
+            <input id="settings-name" value={name} maxLength={24} onChange={(event) => setName(event.target.value)} placeholder="Guest player" />
+            <p>Your name is used when you create or join your next room.</p>
+            <button className="button primary full-width" type="button" onClick={() => setSettingsOpen(false)}>Done</button>
+            {isSignedIn && <button className="sign-in-link" type="button" onClick={() => void signOut().then(() => {
+              setIdentity({ id: "", name: getIdentity().name });
+              setRoom(null);
+              setPage("rooms");
+              setSettingsOpen(false);
+            }).catch((error: unknown) => setToast(error instanceof Error ? error.message : "Could not sign out."))}>Sign out</button>}
+          </div>
+        </div>
+      )}
       {toast && (
         <div className="toast" role="status">
           <Check size={17} />
@@ -600,8 +664,6 @@ function App() {
 }
 
 function RoomsEntry({
-  name,
-  onNameChange,
   onCreate,
   onJoin,
   invitedCode,
@@ -609,8 +671,6 @@ function RoomsEntry({
   isLocalPreview,
   busy,
 }: {
-  name: string;
-  onNameChange: (name: string) => void;
   onCreate: () => void;
   onJoin: () => void;
   invitedCode: string;
@@ -618,74 +678,39 @@ function RoomsEntry({
   isLocalPreview: boolean;
   busy: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState<"rooms" | "guide">("rooms");
   return (
     <div className="entry-layout">
       <div className="entry-main">
-        <div className="entry-tabs">
-          <div className="active">
-            <Users size={17} /> Private Rooms
+        <div className="entry-table">
+          <div className="entry-tabs" role="tablist" aria-label="Private room information">
+            <button type="button" role="tab" aria-selected={activeTab === "rooms"} className={activeTab === "rooms" ? "active" : ""} onClick={() => setActiveTab("rooms")}>Private Rooms</button>
+            <button type="button" role="tab" aria-selected={activeTab === "guide"} className={activeTab === "guide" ? "active" : ""} onClick={() => setActiveTab("guide")}>How It Works</button>
           </div>
-          <div>
-            <LockKeyhole size={17} /> Friends only
-          </div>
-        </div>
-        <div className="entry-table-head">
-          <span>Room</span>
-          <span>Mode</span>
-          <span>Players</span>
-          <span>Settings</span>
-        </div>
-        <div className="entry-empty">
-          {invitedCode ? (
+          {activeTab === "rooms" ? (
             <>
-              <div className="entry-invite-icon">
-                <Link2 size={29} />
+              <div className="entry-table-head">
+                <span>Room</span><span>Mode</span><span>Players</span><span>Status</span>
               </div>
-              <h1>You've been invited</h1>
-              <p>
-                Join room <strong>{invitedCode}</strong> to play with your
-                friends.
-              </p>
-              {invitedRoom && <span className="invite-found">Room is ready for you.</span>}
+              <div className="entry-example-row" aria-label={invitedCode ? `Invited room ${invitedCode}` : "Example room"}>
+                <span>{invitedCode ? `${invitedCode.slice(0, 4)}…${invitedCode.slice(-4)}` : "A1B2…0718"}</span>
+                <span>Base</span>
+                <span>{invitedRoom ? `${invitedRoom.players.length} / ${invitedRoom.settings.maxPlayers}` : "3 / 4"}</span>
+                <span>{invitedRoom?.status === "in_game" ? "Playing" : "Waiting"}</span>
+              </div>
+              <div className="entry-empty">
+                <h1>{invitedCode ? "You've been invited to a room" : "Continue a room or start a new game"}</h1>
+                <p>{invitedCode ? `Join room ${invitedCode} to play with your friends.` : "Private rooms are visible only to the friends you invite."}</p>
+                <small>{invitedCode ? "Use Join Room below to take a seat." : "Create a room or join with a code below."}</small>
+                {isLocalPreview && <small className="preview-note">Local preview: friends on other devices need the Supabase connection.</small>}
+              </div>
             </>
           ) : (
-            <>
-              <div className="entry-invite-icon">
-                <Users size={32} />
-              </div>
-              <h1>Bring your friends to the table</h1>
-              <p>
-                Create a private Base game or join with a friend's room code. No
-                public lobby or ranking is needed.
-              </p>
-            </>
-          )}
-          <div className="name-field">
-            <label htmlFor="entry-name">Your display name</label>
-            <input
-              id="entry-name"
-              value={name}
-              maxLength={24}
-              onChange={(event) => onNameChange(event.target.value)}
-              placeholder="Enter your name"
-            />
-          </div>
-          <div className="entry-features">
-            <span>
-              <ShieldCheck size={17} /> Private by default
-            </span>
-            <span>
-              <MapIcon size={17} /> Base map
-            </span>
-            <span>
-              <Users size={17} /> 3–4 friends
-            </span>
-          </div>
-          {isLocalPreview && (
-            <p className="preview-note">
-              Local preview: rooms sync between tabs in this browser. Online
-              friends need Supabase to be configured.
-            </p>
+            <div className="entry-how">
+              <h1>Play with friends</h1>
+              <ol><li>Create a private room.</li><li>Share the invite link or code.</li><li>Wait for friends to join and ready up.</li><li>Start the game and play to 10 points.</li></ol>
+              <p>Rooms are private and only people with an invite can join.</p>
+            </div>
           )}
         </div>
         <div className="entry-actions">
@@ -696,37 +721,16 @@ function RoomsEntry({
             disabled={busy}
           >
             <span>{busy ? "Working…" : "Create Room"}</span>
-            <ChevronRight size={25} />
           </button>
           <button className="button join-button" type="button" onClick={onJoin} disabled={busy}>
             <span>{invitedCode ? "Join Invited Room" : "Join Room"}</span>
-            <ChevronRight size={25} />
           </button>
         </div>
       </div>
       <aside className="entry-side">
-        <div className="entry-side-art">
-          <div className="mini-island">
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-          </div>
-        </div>
-        <span className="eyebrow">A table for your crew</span>
-        <h2>One link. One island. Your people.</h2>
-        <p>
-          Set up the room, invite friends, and settle in for a familiar strategy
-          night.
-        </p>
-        <div className="side-facts">
-          <span>Base game</span>
-          <span>10 points</span>
-          <span>No turn timer</span>
-        </div>
+        <h2>Play with friends</h2>
+        <ol><li>Create a private room</li><li>Send the invite link</li><li>Wait until friends are ready</li></ol>
+        <small>Private match · 3–6 players · 10 points</small>
       </aside>
     </div>
   );
@@ -740,6 +744,7 @@ function RoomScreen({
   onCopy,
   onLeave,
   onSeats,
+  onTimer,
   onReady,
   onStart,
   onBoard,
@@ -752,7 +757,8 @@ function RoomScreen({
   busy: boolean;
   onCopy: (text: string, message: string) => void;
   onLeave: () => void;
-  onSeats: (count: 3 | 4) => void;
+  onSeats: (count: 3 | 4 | 5 | 6) => void;
+  onTimer: (seconds: 60 | 90 | 120 | 180) => void;
   onReady: (ready: boolean) => void;
   onStart: () => void;
   onBoard: () => void;
@@ -760,6 +766,8 @@ function RoomScreen({
   onKick: (userId: string) => Promise<boolean>;
 }) {
   const [chatDraft, setChatDraft] = useState("");
+  const [roomSettingsOpen, setRoomSettingsOpen] = useState(true);
+  const [mobileRoomTab, setMobileRoomTab] = useState<"players" | "settings">("players");
   const self = room.players.find((player) => player.id === identity.id);
   const openSeats = Math.max(0, room.settings.maxPlayers - room.players.length);
   const readyCount = room.players.filter((player) => player.ready).length;
@@ -772,32 +780,33 @@ function RoomScreen({
   }
 
   return (
-    <div className="room-layout">
+    <div className={`room-layout mobile-${mobileRoomTab}`}>
+      <div className="mobile-room-header">
+        <button type="button" onClick={onLeave} aria-label="Leave room">‹</button>
+        <strong>Room ID {room.code.slice(0, 4)}…{room.code.slice(-4)}</strong>
+      </div>
+      <div className="mobile-room-tabs" role="tablist" aria-label="Room views">
+        <button type="button" role="tab" aria-selected={mobileRoomTab === "settings"} onClick={() => setMobileRoomTab("settings")}>Settings</button>
+        <button type="button" role="tab" aria-selected={mobileRoomTab === "players"} onClick={() => setMobileRoomTab("players")}>Players ({room.players.length}/{room.settings.maxPlayers})</button>
+      </div>
       <section
         className="room-panel players-panel"
         aria-labelledby="players-heading"
       >
         <h2 id="players-heading">
-          Players{" "}
-          <span>
-            ({room.players.length}/{room.settings.maxPlayers})
-          </span>
+          Players <span>{room.players.length} / {room.settings.maxPlayers}</span>
         </h2>
         <div className="player-list">
           {room.players.map((player) => (
             <div className="player-card" key={player.id}>
               <div className="player-card-top">
-                <div className={`avatar ${colorClass(player.color)}`}>
-                  {player.name.charAt(0).toUpperCase()}
-                </div>
+                <img className="seat-avatar" src={player.id === room.hostId ? "/assets/figma/room-seat-avatar.svg" : "/assets/figma/room-seat-avatar-alt.svg"} alt="" />
                 <div className="player-identity">
                   <strong>
-                    {player.name}{" "}
-                    {player.id === identity.id && <small>(You)</small>}
+                    {player.id === room.hostId && player.id === identity.id ? "You (host)" : player.name}
                   </strong>
-                  <span>
-                    {player.id === room.hostId ? "Host" : "Friend"} · Base game
-                  </span>
+                  <span className="desktop-player-meta">Karma: 0/0</span>
+                  <span className="mobile-player-meta">{player.id === room.hostId ? "Host · " : ""}{player.color} pieces</span>
                 </div>
                 {isHost && player.id !== identity.id &&
                   (room.status === "waiting" || room.status === "completed") && (
@@ -816,20 +825,15 @@ function RoomScreen({
                       <X size={15} />
                     </button>
                   )}
-                {player.id === room.hostId && (
-                  <span className="host-dot" title="Host">
-                    ★
-                  </span>
-                )}
               </div>
               <div className="player-card-bottom">
                 <div
                   className={`player-pieces ${colorClass(player.color)}`}
                   aria-hidden="true"
                 >
-                  <span>⬢</span>
-                  <span>◆</span>
                   <span>●</span>
+                  <span>▲</span>
+                  <span>◆</span>
                 </div>
                 <strong className={player.ready ? "ready" : "not-ready"}>
                   {player.ready ? "READY" : "Not Ready"}
@@ -839,30 +843,25 @@ function RoomScreen({
           ))}
           {Array.from({ length: openSeats }, (_, index) => (
             <div className="empty-seat" key={`empty-${index}`}>
-              <div className="empty-avatar">
-                <Users size={19} />
-              </div>
+              <img className="seat-avatar" src="/assets/figma/room-seat-avatar-alt.svg" alt="" />
               <div>
-                <strong>Waiting for a friend</strong>
-                <span>Share the link to fill this seat</span>
+                <strong>Invite a friend</strong>
+                <span>Waiting for someone to join</span>
               </div>
+              <span className="empty-seat-state">OPEN SEAT</span>
             </div>
           ))}
         </div>
         <div className="players-footer">
-          <h3>
-            Friends ({room.players.length}/{room.settings.maxPlayers})
-          </h3>
-          <p>
-            <Link2 size={17} /> Everyone joins through this private room link.
-          </p>
           <button
             className="button small-green"
             type="button"
+            disabled={openSeats === 0}
             onClick={() => onCopy(inviteUrl, "Invite link copied.")}
           >
-            Copy invite link <Copy size={16} />
+            {openSeats === 0 ? "Room Full" : "Invite Friend"}
           </button>
+          <p>{openSeats === 0 ? "All seats are filled." : "Share the link to fill the open seat."}</p>
         </div>
       </section>
 
@@ -880,9 +879,7 @@ function RoomScreen({
         </div>
         <div className="config-scroll">
           <section className="config-section invite-section">
-            <h2>
-              Invite Friends <Info size={17} />
-            </h2>
+            <h2>Invite Friends</h2>
             <div className="invite-copy">
               <input
                 aria-label="Invite link"
@@ -895,21 +892,10 @@ function RoomScreen({
                 type="button"
                 onClick={() => onCopy(inviteUrl, "Invite link copied.")}
               >
-                Copy <Copy size={16} />
+                Copy
               </button>
             </div>
-            <div className="code-line">
-              <LockKeyhole size={15} />
-              <span>
-                Private room · code <strong>{room.code}</strong>
-              </span>
-              <button
-                type="button"
-                onClick={() => onCopy(room.code, "Room code copied.")}
-              >
-                Copy code
-              </button>
-            </div>
+            <p className="invite-help">Only friends with your link can join.</p>
           </section>
           <section className="config-section">
             <h2>Game Mode</h2>
@@ -917,36 +903,34 @@ function RoomScreen({
               <div className="option-card selected">
                 <HexArt kind="mode" />
                 <span>Base</span>
-                <Check className="option-check" size={15} />
               </div>
               <div
                 className="option-card unavailable"
                 title="Coming after the Base game"
               >
                 <HexArt kind="mode" />
-                <span>More modes</span>
-                <small>Later</small>
+                <span>Later</span>
               </div>
+              <div className="option-card unavailable" title="Coming after the Base game"><HexArt kind="mode" /><span>Later</span></div>
             </div>
           </section>
           <section className="config-section">
             <h2>Map</h2>
             <div className="option-row">
-              <div className="option-card selected">
+              <div className={`option-card ${room.settings.map === "base" ? "selected" : ""}`}>
                 <HexArt kind="map" />
-                <span>Base</span>
-                <Check className="option-check" size={15} />
+                <span>Standard</span>
               </div>
-              <div
-                className="option-card unavailable"
-                title="Larger maps are planned"
-              >
+              <div className={`option-card ${room.settings.map === "large" ? "selected" : ""}`}>
                 <HexArt kind="map" />
-                <span>Larger maps</span>
-                <small>Later</small>
+                <span>Expanded<br />5–6 players</span>
               </div>
+              <div className="option-card unavailable" title="More maps are planned"><HexArt kind="map" /><span>More soon</span></div>
             </div>
+            <p className="setting-note">The map changes automatically with the room size.</p>
           </section>
+          <p className="mobile-settings-summary">{room.settings.map === "large" ? "5–" : "3–"}{room.settings.maxPlayers} friends · 10 points · {room.settings.turnTimerSeconds}s turns</p>
+          {roomSettingsOpen && <>
           <section className="config-section">
             <h2>
               Rules <Info size={17} />
@@ -990,7 +974,18 @@ function RoomScreen({
                 </div>
                 <div className="setting-value">
                   <HexArt kind="clock" />
-                  <strong>Off</strong>
+                  <select
+                    className="turn-timer-select"
+                    aria-label="Turn timer for the next match"
+                    value={room.settings.turnTimerSeconds ?? 90}
+                    disabled={!isHost || busy || room.status === "in_game"}
+                    onChange={(event) => onTimer(Number(event.target.value) as 60 | 90 | 120 | 180)}
+                  >
+                    <option value={60}>1 minute</option>
+                    <option value={90}>1½ minutes</option>
+                    <option value={120}>2 minutes</option>
+                    <option value={180}>3 minutes</option>
+                  </select>
                 </div>
               </div>
               <div className="setting-tile">
@@ -1002,20 +997,20 @@ function RoomScreen({
                       !isHost ||
                       busy ||
                       room.settings.maxPlayers === 3 ||
-                      room.players.length > 3
+                      room.players.length > room.settings.maxPlayers - 1
                     }
-                    onClick={() => onSeats(3)}
-                    aria-label="Decrease players to three"
+                    onClick={() => onSeats((room.settings.maxPlayers - 1) as 3 | 4 | 5)}
+                    aria-label="Decrease maximum players"
                   >
                     ‹
                   </button>
                   <strong>{room.settings.maxPlayers}</strong>
-                  <span>/4</span>
+                  <span>/6</span>
                   <button
                     type="button"
-                    disabled={!isHost || busy || room.settings.maxPlayers === 4}
-                    onClick={() => onSeats(4)}
-                    aria-label="Increase players to four"
+                    disabled={!isHost || busy || room.settings.maxPlayers === 6}
+                    onClick={() => onSeats((room.settings.maxPlayers + 1) as 4 | 5 | 6)}
+                    aria-label="Increase maximum players"
                   >
                     ›
                   </button>
@@ -1038,12 +1033,16 @@ function RoomScreen({
             </div>
             <p className="setting-note">
               {isHost
-                ? "Changing the seat count asks your friends to ready up again."
+                ? "Changing seats or the turn timer asks your friends to ready up again."
                 : "The host manages room settings."}
             </p>
           </section>
+          </>}
         </div>
         <div className="config-footer">
+          <button className="setup-summary" type="button" aria-expanded={roomSettingsOpen} onClick={() => setRoomSettingsOpen((open) => !open)}>
+            {roomSettingsOpen ? "Hide room settings" : `${room.settings.map === "large" ? "5–" : "3–"}${room.settings.maxPlayers} players   •   10 points   •   ${room.settings.turnTimerSeconds}s turns`}
+          </button>
           {room.status === "in_game" ? (
             <>
               <button
@@ -1069,7 +1068,7 @@ function RoomScreen({
               <span>
                 {canStart(room)
                   ? "Everyone is ready. Start when you are."
-                  : `${readyCount}/${room.players.length} ready · Need at least 3 friends to start`}
+                  : `${readyCount}/${room.players.length} ready · Need at least ${room.settings.map === "large" ? 5 : 3} players to start`}
               </span>
             </>
           ) : (
@@ -1092,8 +1091,7 @@ function RoomScreen({
 
       <section className="room-panel chat-panel" aria-labelledby="chat-heading">
         <div className="chat-heading">
-          <MessageCircle size={22} />
-          <h2 id="chat-heading">Chat</h2>
+          <h2 id="chat-heading">Room chat</h2>
         </div>
         <div className="chat-messages" aria-live="polite">
           {room.chat.length ? (
@@ -1112,16 +1110,15 @@ function RoomScreen({
             ))
           ) : (
             <div className="chat-empty">
-              <MessageCircle size={28} />
-              <p>Say hello to your friends.</p>
-              <span>Messages stay in this room.</span>
+              <p>Room created</p>
+              <span>Invite friends, then chat here while you wait.</span>
             </div>
           )}
         </div>
         <form className="chat-compose" onSubmit={handleChat}>
           <input
             aria-label="Send a message"
-            placeholder="Send a message"
+            placeholder="Message your friends..."
             value={chatDraft}
             maxLength={500}
             disabled={busy}
@@ -1137,15 +1134,22 @@ function RoomScreen({
         </form>
       </section>
       <div className="mobile-room-bar">
-        <button
-          type="button"
-          onClick={() => onCopy(inviteUrl, "Invite link copied.")}
-        >
-          <Copy size={18} /> Copy invite
-        </button>
-        <button type="button" onClick={onLeave}>
-          <DoorOpen size={18} /> Leave room
-        </button>
+        <div className="mobile-invite-actions">
+          <button type="button" disabled={openSeats === 0} onClick={() => onCopy(inviteUrl, "Invite link copied.")}>{openSeats === 0 ? "Room Full" : "Invite Friends"}</button>
+          <button type="button" disabled={openSeats === 0} aria-label="Copy invite link" onClick={() => onCopy(inviteUrl, "Invite link copied.")}>↗</button>
+        </div>
+        {room.status === "in_game" ? (
+          <button className="mobile-primary-action" type="button" onClick={onBoard}>Return to Board</button>
+        ) : isHost ? (
+          <button className="mobile-primary-action" type="button" disabled={!canStart(room) || busy} onClick={onStart}>
+            {room.status === "completed" ? "Start Rematch" : "Start Game"}
+          </button>
+        ) : (
+          <label className="mobile-primary-action mobile-ready-action">
+            <input type="checkbox" checked={self?.ready ?? false} disabled={busy} onChange={(event) => onReady(event.target.checked)} />
+            {self?.ready ? "Ready ✓" : "I'm Ready"}
+          </label>
+        )}
       </div>
     </div>
   );

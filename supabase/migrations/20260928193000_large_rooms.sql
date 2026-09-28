@@ -1,6 +1,13 @@
+-- Expand the private Base room to five or six seats, with a 30-tile map.
+alter table public.rooms drop constraint rooms_max_players_check;
+alter table public.rooms add constraint rooms_max_players_check check (max_players in (3, 4, 5, 6));
+alter table public.rooms drop constraint rooms_map_check;
+alter table public.rooms add constraint rooms_map_check check (map in ('base', 'large'));
+alter table public.room_members drop constraint room_members_seat_no_check;
+alter table public.room_members add constraint room_members_seat_no_check check (seat_no between 0 and 5);
 -- These are transaction boundaries for Edge Functions. No browser role can
 -- execute them. The Edge Function verifies the JWT, then passes its user ID.
-create function public.apply_room_command(
+create or replace function public.apply_room_command(
   p_actor uuid,
   p_action_id uuid,
   p_type text,
@@ -23,6 +30,7 @@ declare
   v_next_host uuid;
   v_message text;
   v_target_id uuid;
+  v_move record;
 begin
   if p_actor is null or p_action_id is null or p_type is null
      or p_expected_revision is null or p_expected_revision < 0 then
@@ -56,7 +64,7 @@ begin
     if jsonb_typeof(p_payload->'displayName') <> 'string'
        or (p_payload ? 'maxPlayers' and (
          jsonb_typeof(p_payload->'maxPlayers') <> 'number'
-         or p_payload->>'maxPlayers' not in ('3', '4')
+         or p_payload->>'maxPlayers' not in ('3', '4', '5', '6')
        )) or (p_payload ? 'turnTimerSeconds' and (
          jsonb_typeof(p_payload->'turnTimerSeconds') <> 'number'
          or p_payload->>'turnTimerSeconds' not in ('60', '90', '120', '180')
@@ -67,7 +75,7 @@ begin
     v_max_players := coalesce((p_payload->>'maxPlayers')::smallint, 4);
     v_turn_timer := coalesce((p_payload->>'turnTimerSeconds')::smallint, 90);
     if v_name is null or pg_catalog.char_length(v_name) not between 1 and 24
-       or v_max_players not in (3, 4) then
+       or v_max_players not in (3, 4, 5, 6) then
       raise exception 'INVALID_CONFIG' using errcode = 'P0001';
     end if;
     if (select count(*) from public.rooms
@@ -159,7 +167,7 @@ begin
         raise exception 'INVALID_CONFIG' using errcode = 'P0001';
       end if;
       if (p_payload ? 'maxPlayers' and (jsonb_typeof(p_payload->'maxPlayers') <> 'number'
-         or p_payload->>'maxPlayers' not in ('3', '4')))
+         or p_payload->>'maxPlayers' not in ('3', '4', '5', '6')))
          or (p_payload ? 'turnTimerSeconds' and
            (jsonb_typeof(p_payload->'turnTimerSeconds') <> 'number'
            or p_payload->>'turnTimerSeconds' not in ('60', '90', '120', '180'))) then
@@ -167,31 +175,34 @@ begin
       end if;
       v_max_players := coalesce((p_payload->>'maxPlayers')::smallint, v_room.max_players);
       v_turn_timer := coalesce((p_payload->>'turnTimerSeconds')::smallint, v_room.turn_timer_seconds);
-      if v_max_players not in (3, 4)
+      if v_max_players not in (3, 4, 5, 6)
          or (select count(*) from public.room_members
              where room_id = v_room.id and status = 'active') > v_max_players then
         raise exception 'INVALID_CONFIG' using errcode = 'P0001';
       end if;
       if v_max_players <> v_room.max_players or v_turn_timer <> v_room.turn_timer_seconds then
-        -- A departed player can leave a gap below seat 3. Compact the one
-        -- out-of-range seat before shrinking to three, so a later join cannot
-        -- fill that gap and make the room larger than its configured limit.
-        if v_max_players = 3 and v_room.max_players <> 3 then
+        -- When shrinking, move active seats above the new limit into gaps.
+        for v_move in select user_id, seat_no from public.room_members
+          where room_id = v_room.id and status = 'active'
+            and seat_no >= v_max_players order by seat_no loop
           select gs.n::smallint into v_seat
-          from pg_catalog.generate_series(0, 2) as gs(n)
+          from pg_catalog.generate_series(0, v_max_players - 1) as gs(n)
           where not exists (
             select 1 from public.room_members m
             where m.room_id = v_room.id and m.status = 'active'
               and m.seat_no = gs.n
           ) order by gs.n limit 1;
-          if v_seat is not null then
-            update public.room_members set seat_no = v_seat
-            where room_id = v_room.id and status = 'active' and seat_no = 3;
+          if v_seat is null then
+            raise exception 'INVALID_CONFIG' using errcode = 'P0001';
           end if;
-        end if;
+          update public.room_members set seat_no = v_seat
+          where room_id = v_room.id and user_id = v_move.user_id;
+        end loop;
         update public.room_members set is_ready = false
         where room_id = v_room.id and user_id <> p_actor and status = 'active';
-        update public.rooms set max_players = v_max_players, turn_timer_seconds = v_turn_timer,
+        update public.rooms set max_players = v_max_players,
+          map = case when v_max_players >= 5 then 'large' else 'base' end,
+          turn_timer_seconds = v_turn_timer,
           revision = revision + 1, updated_at = now()
         where id = v_room.id returning * into v_room;
         insert into public.room_events(room_id, revision, kind, actor_id, public_payload)
@@ -320,15 +331,8 @@ begin
   return v_response;
 end;
 $$;
-revoke execute on function public.apply_room_command(uuid, uuid, text, bigint, uuid, text, jsonb)
-from public, anon, authenticated, service_role;
-grant execute on function public.apply_room_command(uuid, uuid, text, bigint, uuid, text, jsonb)
-to service_role;
 
--- START_GAME is separate because the TypeScript rules engine must first produce
--- the initial hidden state and every player's permitted projection. The room
--- revision and roster are checked again while locked in this one transaction.
-create function public.start_room_game(
+create or replace function public.start_room_game(
   p_actor uuid,
   p_action_id uuid,
   p_room_id uuid,
@@ -376,7 +380,7 @@ begin
   end if;
   select count(*) into v_count from public.room_members
   where room_id = p_room_id and status = 'active';
-  if v_count < 3 or v_count > v_room.max_players
+  if v_count < (case when v_room.max_players >= 5 then 5 else 3 end) or v_count > v_room.max_players
      or exists (
        select 1 from public.room_members
        where room_id = p_room_id and status = 'active'
@@ -414,139 +418,3 @@ begin
   return v_response;
 end;
 $$;
-revoke execute on function public.start_room_game(uuid, uuid, uuid, bigint, text, jsonb, jsonb)
-from public, anon, authenticated, service_role;
-grant execute on function public.start_room_game(uuid, uuid, uuid, bigint, text, jsonb, jsonb)
-to service_role;
-
-create function public.load_game_state(p_actor uuid, p_game_id uuid)
-returns jsonb language plpgsql security definer set search_path = '' as $$
-declare v_game public.games%rowtype; v_state private.game_states%rowtype;
-begin
-  select * into v_game from public.games where id = p_game_id;
-  if not found or not exists (
-    select 1 from public.room_members where room_id = v_game.room_id
-      and user_id = p_actor and status = 'active'
-  ) then
-    raise exception 'NOT_GAME_MEMBER' using errcode = 'P0001';
-  end if;
-  select * into v_state from private.game_states where game_id = p_game_id;
-  return jsonb_build_object('roomId',v_game.room_id,'gameId',p_game_id,
-    'revision',v_state.revision,'seed',v_state.seed,'state',v_state.state);
-end;
-$$;
-revoke execute on function public.load_game_state(uuid, uuid)
-from public, anon, authenticated, service_role;
-grant execute on function public.load_game_state(uuid, uuid) to service_role;
-
-create function public.commit_game_transition(
-  p_actor uuid,
-  p_action_id uuid,
-  p_game_id uuid,
-  p_expected_revision bigint,
-  p_request jsonb,
-  p_next_state jsonb,
-  p_views jsonb,
-  p_completed boolean default false
-) returns jsonb language plpgsql security definer set search_path = '' as $$
-declare
-  v_game public.games%rowtype;
-  v_receipt private.command_receipts%rowtype;
-  v_response jsonb;
-  v_member record;
-  v_count integer;
-begin
-  if p_actor is null or p_action_id is null or p_game_id is null
-     or p_expected_revision is null or p_expected_revision < 0
-     or jsonb_typeof(p_request) <> 'object'
-     or jsonb_typeof(p_next_state) <> 'object'
-     or jsonb_typeof(p_views) <> 'object' or p_completed is null then
-    raise exception 'INVALID_GAME_COMMIT' using errcode = 'P0001';
-  end if;
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(p_actor::text || ':' || p_action_id::text, 0)
-  );
-  select * into v_receipt from private.command_receipts
-  where actor_id = p_actor and action_id = p_action_id;
-  if found then
-    if v_receipt.scope <> 'game' or v_receipt.request <> p_request then
-      raise exception 'ACTION_ID_REUSED' using errcode = 'P0001';
-    end if;
-    return v_receipt.response;
-  end if;
-  select * into v_game from public.games where id = p_game_id for update;
-  if not found or not exists (
-    select 1 from public.room_members where room_id = v_game.room_id
-      and user_id = p_actor and status = 'active'
-  ) then
-    raise exception 'NOT_GAME_MEMBER' using errcode = 'P0001';
-  end if;
-  if v_game.status <> 'active' then
-    raise exception 'GAME_COMPLETED' using errcode = 'P0001';
-  end if;
-  if v_game.revision <> p_expected_revision then
-    raise exception 'STALE_REVISION' using errcode = 'P0001';
-  end if;
-  select count(*) into v_count from public.room_members
-  where room_id = v_game.room_id and status = 'active';
-  if (select count(*) from pg_catalog.jsonb_object_keys(p_views)) <> v_count then
-    raise exception 'INVALID_VIEWS' using errcode = 'P0001';
-  end if;
-  for v_member in select user_id from public.room_members
-                  where room_id = v_game.room_id and status = 'active' loop
-    if not (p_views ? v_member.user_id::text)
-       or jsonb_typeof(p_views->v_member.user_id::text) <> 'object' then
-      raise exception 'INVALID_VIEWS' using errcode = 'P0001';
-    end if;
-  end loop;
-  update private.game_states set revision = revision + 1,
-    state = p_next_state, updated_at = now() where game_id = p_game_id;
-  update public.games set revision = revision + 1,
-    status = case when p_completed then 'completed' else 'active' end,
-    updated_at = now() where id = p_game_id returning * into v_game;
-  for v_member in select user_id from public.room_members
-                  where room_id = v_game.room_id and status = 'active' loop
-    update public.game_views set revision = v_game.revision,
-      view = p_views->v_member.user_id::text, updated_at = now()
-    where game_id = p_game_id and user_id = v_member.user_id;
-  end loop;
-  if p_completed then
-    update public.room_members set is_ready = false
-    where room_id = v_game.room_id and user_id <> (
-      select host_user_id from public.rooms where id = v_game.room_id
-    ) and status = 'active';
-    update public.rooms set status = 'completed', revision = revision + 1,
-      updated_at = now() where id = v_game.room_id;
-  end if;
-  v_response := jsonb_build_object('gameId',p_game_id,'roomId',v_game.room_id,
-    'revision',v_game.revision,'status',v_game.status);
-  insert into private.command_receipts(actor_id, action_id, scope, target_id, request, response)
-  values (p_actor, p_action_id, 'game', p_game_id, p_request, v_response);
-  return v_response;
-end;
-$$;
-revoke execute on function public.commit_game_transition(uuid, uuid, uuid, bigint, jsonb, jsonb, jsonb, boolean)
-from public, anon, authenticated, service_role;
-grant execute on function public.commit_game_transition(uuid, uuid, uuid, bigint, jsonb, jsonb, jsonb, boolean)
-to service_role;
-
--- An Edge Function checks a repeated action before recalculating a game move.
--- The commit RPC repeats this check under an advisory lock to close the race.
-create function public.get_action_receipt(
-  p_actor uuid, p_action_id uuid, p_scope text, p_request jsonb
-) returns jsonb language plpgsql security definer set search_path = '' as $$
-declare v_receipt private.command_receipts%rowtype;
-begin
-  select * into v_receipt from private.command_receipts
-  where actor_id = p_actor and action_id = p_action_id;
-  if not found then return null; end if;
-  if v_receipt.scope <> p_scope or v_receipt.request <> p_request then
-    raise exception 'ACTION_ID_REUSED' using errcode = 'P0001';
-  end if;
-  return v_receipt.response;
-end;
-$$;
-revoke execute on function public.get_action_receipt(uuid, uuid, text, jsonb)
-from public, anon, authenticated, service_role;
-grant execute on function public.get_action_receipt(uuid, uuid, text, jsonb)
-to service_role;

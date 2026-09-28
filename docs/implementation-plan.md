@@ -4,22 +4,27 @@
 **Product location:** C:\StartUpsProject\Colonist workspace\colonist-webapp
 **Design file:** [Friends Hex Game — Product Design & Board Screens](https://www.figma.com/design/kw6x7wzSsQpzAfcUfSx2Z8/Friends-Hex-Game-%E2%80%94-Product-Design---Board-Screens?node-id=30-2)
 
+**Validation rule (28 September 2026):** Do not create permanent unit, regression, integration, end-to-end, or smoke tests for future work. Do not use automated test runs as release gates. Manually validate each changed flow in the running app with the relevant player identities, screen sizes, and backend environment. Record the steps, expected behavior, observed result, and unresolved issues. Existing test files and earlier test results are historical evidence only.
+
 ## 1. Current position and target
 
 At the start of this plan, the workspace had gameplay, map, video, asset, and visual research. Figma pages 07 and 08 hold dated reference images; page 08 covers the current Rooms list, Room ID dialog, host invite/configuration, host rules/advanced settings, and joined guest view. These are screenshot references. Four older editable concepts and their component styles are marked superseded.
 
-**Progress on 28 September 2026:** the product repository is initialized. The responsive app now plays a Base match across tabs in the same browser profile, including opening placement, rolling, building, trading, forced choices, and results. The Supabase room and match adapters, migrations, Edge Functions, RLS, and private Realtime revision path are written. The Base engine has a complete ten-point match simulation and replay. Figma pages 09 and 10 contain reusable production components and a clickable editable desktop/phone room and match flow. The owner created hosted Supabase project `shadman-app`, and its [project-scoped Codex MCP connection](supabase-connection.md) is authenticated. Local Supabase runtime and real remote multiplayer remain unverified because Docker Desktop's service is stopped; the hosted schema/functions have not been deployed. Gates E and F remain open until a complete match is exercised through the Supabase-backed UI and deployed service.
+**Progress on 28 September 2026:** the responsive app, Base engine, editable Figma room/match flow, Supabase schema, command functions, and private Realtime path are present. Five migrations and both JWT-protected functions are deployed to `shadman-app`; the project-scoped connection is documented in [supabase-connection.md](supabase-connection.md). Email/password account creation works without email confirmation, while anonymous sign-in stays disabled. Three isolated browser identities created/joined/readied a hosted room and started a match with a two-minute timer. A live move reached another player's board, and server timeout advanced an expired setup turn. The larger 30-hex board, five/six-seat configuration, supplies, and Special Build logic are implemented and deployed. A five-seat waiting room and three joins were manually observed; the expanded match itself is not yet manually validated. The local Docker stack remains unavailable. Complete hosted matches, privacy checks, expanded-match play, Figma expanded states, and static hosting remain open.
+
+**Implementation update, 28 September 2026:** the private-room entry, join dialog, desktop host room, and 390 px phone Players/Settings tabs follow the editable Figma frames. A prior browser-only preview covered the early room and match flow. The current app requires Supabase; its hosted three-player walkthrough, five-seat room check, and production build are recorded in [manual UI walkthrough](manual-validation-2026-09-28.md). Full expanded gameplay, editable Figma expanded states, and public HTTPS deployment remain in this plan.
 
 | Gate | Current evidence | Remaining check |
 | --- | --- | --- |
 | A — shared contract | Rules, room, action, and visibility documents written | Review any house-rule change before editing the engine |
 | B — editable Figma | Room flow and core match states created at desktop/phone sizes | Finish less common prompts and compare final renders |
-| C — local Supabase room | Schema/functions, policy smoke tests, and frontend adapter pass | Run the full Docker stack with distinct browser identities |
-| D — pure Base engine | Full ten-point simulation, replay, and rule tests pass | Keep regression coverage as UI issues surface |
-| E — complete playable UI | Three-tab browser preview exercised through setup, roll, build, trade, reconnect, and chat | Complete a Supabase-backed four-browser match and rematch |
-| F — hosted release | Cloudflare Static Assets configuration dry-runs | Connect owner accounts, deploy, and run remote QA |
+| C — private Supabase room | Hosted schema/functions and three-browser create/join/ready/start observed | Manually check outsider reads, full room, race, and reconnect |
+| D — pure Base engine | Full ten-point simulation, replay, and rule tests passed before the manual-only rule | Manually verify affected rule paths through the playable UI as issues surface |
+| E — complete playable UI | Hosted three-player match started; live move and setup timeout observed | Complete a Supabase-backed full match and rematch |
+| F — larger-player Base board | 30-hex board, five/six seats, supplies, Special Build, and hosted schema/functions implemented; five-seat room configuration and three joins observed | Manually start and finish five- and six-player matches, inspect board and phone layouts, and add editable Figma expanded states |
+| G — hosted release | Supabase backend deployed; Cloudflare Static Assets configuration dry-runs | Deploy the static app and run remote-device QA |
 
-The first playable release is a **private browser Base game for three or four friends**. One person hosts and shares a link or room code. Friends join, ready up, play a complete standard match to 10 victory points, reconnect after a tab closes, and start a rematch. Ranking, public matchmaking, bots, spectators, paid modes, expansions, and larger maps are later work. Keep the board geometry flexible enough to add researched larger maps after Base works.
+The first playable milestone is a **private browser Base game for three or four friends**. The release also includes the 5–6 player Base board so more friends can play in one room. One person hosts and shares a link or room code. Friends join, ready up, play a complete match to 10 victory points, reconnect after a tab closes, and start a rematch. Ranking, public matchmaking, bots, spectators, paid modes, the 7–8 player board, Seafarers, Cities & Knights, and unrelated geography/fun maps remain outside this release unless the owner expands the scope.
 
 The visual target is the current Colonist room and game interface shown by the dated references. Make editable Figma screens and measure them beside those captures. Keep raw reference screenshots in the workspace analysis area. Record the source and usage status of every asset that goes into the shipped app.
 
@@ -29,12 +34,12 @@ The visual target is the current Colonist room and game interface shown by the d
 | --- | --- |
 | Visibility | Every room is private and absent from a public room list. |
 | Entry | Unpredictable invite link or short code; membership checks still control data access. |
-| Seats | Host chooses three or four unique human seats; no bots. |
-| Mode and map | Standard Base game and Base map. |
+| Seats | The current build supports three to six unique human seats; five or six seats select the expanded Base board. No bots. |
+| Mode and map | Base rules on the standard 19-hex board or the matching larger-player Base board. Room settings must not allow a seat count and board combination that the server cannot run. |
 | Dice and win | Ordinary two-dice probabilities; 10 victory points. |
-| Turn clock | Off; a disconnected friend's turn waits. |
+| Turn clock | Host chooses 60, 90, 120, or 180 seconds before each match; 90 seconds is the default. The server owns the deadline and applies timeout moves. |
 | Ready/start | Guests explicitly ready up. Host starts with at least three players and all occupied seats ready. A supported setting change clears guest readiness. |
-| Identity | Supabase anonymous sign-in initially; a durable identity/linking path is needed before cross-device recovery is promised. |
+| Identity | Supabase email/password accounts with display names; no email confirmation or anonymous sign-in. A configured mail sender is needed for password recovery. |
 
 The room can follow Colonist's player seats, invitation, settings, chat, and fixed ready/start action hierarchy. Every interactive control in the final UI must have implemented behavior. Unsupported options should be absent or visibly unavailable.
 
@@ -45,11 +50,12 @@ The room can follow Colonist's player seats, invitation, settings, chat, and fix
 | **A. Shared contract** | Freeze room flow, Base rules, command names, visibility, and errors. | Rules, room-flow, and command/visibility documents in this docs folder. | Each phase has allowed actions and valid/invalid examples. |
 | **B. Editable Figma flow** | Measure references; create new production components and host/guest designs. | Clickable create → invite → join → ready → start prototype, then match screens. | Named editable frames match dated references at desktop and phone sizes. |
 | **C. Local room** | Initialize repository and local Supabase; implement identity, membership, configuration, ready/start, and live updates. | Private room working in two to four local browsers. | Invite, capacity, privacy, refresh, and concurrent-join checks pass. |
-| **D. Pure Base engine** | Implement board graph, deterministic rules, hidden-information views, and scoring. This can run beside C after A. | Reproducible TypeScript engine and rule tests. | A complete match can be simulated without UI or database; invalid moves do not change state. |
+| **D. Pure Base engine** | Implement board graph, deterministic rules, hidden-information views, and scoring. This can run beside C after A. | Reproducible TypeScript engine and a recorded manual rules walkthrough. | A complete match can be played manually; invalid moves leave the visible state unchanged. |
 | **E. Complete game** | Integrate engine, UI, backend, reconnect, and rematch. | Full local match in four browsers. | No manual database edit; hidden hands and deck never leak. |
-| **F. Hosted release** | Deploy Supabase and Cloudflare, run remote QA, write operating notes. | Working private-invite URL and complete source/design handoff. | Four remote browsers finish, reconnect, and rematch; access tests and usage review pass. |
+| **F. Larger-player Base game** | Add the expanded board, supplies, seat capacity, Special Build Phase, responsive player list, and server-backed room/game flows. | Full local six-player match, with manual observations recorded. | Every seat can join, build in turn and in eligible Special Build Phases, reconnect, see only its own hidden information, finish, and rematch. |
+| **G. Hosted release** | Deploy Supabase and Cloudflare, run remote QA, write operating notes. | Working private-invite URL and complete source/design handoff. | Four-player and six-player remote groups finish, reconnect, and rematch; access checks and usage review pass. |
 
-**Critical path:** A → C and D → E → F. B begins after A and runs beside C/D. Asset inventory and production run beside B/D. The first visible review is the editable Figma room flow; the first playable review is the local room.
+**Critical path:** A → C and D → E → F → G. B begins after A and runs beside C/D, then adds larger-board screens during F. Asset inventory and production run beside B/D. The first visible review is the editable Figma room flow; the first playable review is the local room.
 
 ## 3. Gate A: shared contract
 
@@ -77,13 +83,13 @@ The room can follow Colonist's player seats, invitation, settings, chat, and fix
 
 ### Repository and app
 
-- Initialize Git in the product folder. Scaffold React, Vite, and strict TypeScript; commit a lockfile; add local start, production build, typecheck, and test scripts. Create entry, room, game, and results routes.
-- Keep code, migrations, shipped art, tests, and handoff documents here. Keep raw competitor captures, video stills, and discarded art in sibling analysis/assets folders.
+- Initialize Git in the product folder. Scaffold React, Vite, and strict TypeScript; commit a lockfile; add local start and production build scripts. Create entry, room, game, and results routes.
+- Keep code, migrations, shipped art, and handoff documents here. Existing test files remain as historical material; do not add to them. Keep raw competitor captures, video stills, and discarded art in sibling analysis/assets folders.
 - Implement Figma components against fixture data first so visual review does not wait for hosted services; then attach live state.
 
 ### Local Supabase and commands
 
-- Run local Supabase. Use [anonymous Auth](https://supabase.com/docs/guides/auth/auth-anonymous) for low-friction guests and bind each seat to a Supabase user ID. Anonymous users have the authenticated database role, so membership checks must use the actual user ID, not the role alone.
+- Use [email/password Auth](https://supabase.com/docs/guides/auth/passwords) and bind each seat to the verified Supabase user ID. The hosted project has email confirmation disabled and anonymous sign-in disabled. Membership checks use the user ID, not the `authenticated` role alone.
 - Add migrations for rooms, room members, games, events, idempotency records, and per-player views. Keep the full state, hidden hands, unrevealed cards, and random seed in a non-exposed server-only location. Apply [row-level security](https://supabase.com/docs/guides/database/postgres/row-level-security) to every exposed table and test host, member, outsider, and signed-out access.
 - Accept commands through an authenticated [Edge Function](https://supabase.com/docs/guides/functions/auth). The browser sends an intent plus expected revision, never replacement state. Authenticate, authorize, validate the command with the pure engine, and calculate the next state.
 - Commit private state, new revision, event, retry ID, and per-player views in **one database transaction** or one server-only commit routine. Several separate Edge Function writes are not an atomic turn. A revision conflict requires reload and revalidation; retrying the same action ID must not apply it twice.
@@ -92,12 +98,12 @@ The room can follow Colonist's player seats, invitation, settings, chat, and fix
 
 ### Pure Base engine
 
-- Give hexes, vertices, and edges stable IDs. Generate the Base board from a server-owned seed and test adjacency, placement distance, roads, coast, and ports. Keep geometry usable for later larger maps.
+- Give hexes, vertices, and edges stable IDs. Generate the Base board from a server-owned seed and manually inspect adjacency, placement distance, roads, coast, and ports in the running game. Keep geometry usable for later larger maps.
 - Use pure validation and transition functions. Server-generated dice, card draws, and theft become committed outcomes; the browser only displays them.
-- Implement rules in game order, then public and per-seat state projections. Test illegal opening, bank shortage, seven/discard, Longest Road branches/ties, Largest Army ties, scarce resources, simultaneous trades, hidden points, and immediate win.
-- Replay a seeded complete match from recorded commands; random and attempted illegal commands must preserve engine invariants.
+- Implement rules in game order, then public and per-seat state projections. Manually check illegal opening, bank shortage, seven/discard, Longest Road branches/ties, Largest Army ties, scarce resources, simultaneous trades, hidden points, and immediate win when those paths are affected.
+- Walk through a complete match in the app, recording the moves and visible outcomes. Check that rejected moves leave the game unchanged.
 
-**Gate C passes** when a private local room works in separate browsers with persistent seats and correct permissions. **Gate D passes** when a full Base match can run as engine commands without UI or database.
+**Gate C passes** when a private local room works in separate browsers with persistent seats and correct permissions. **Gate D passes** when a full Base match has been manually played with correct rules and rejected moves leave its visible state unchanged.
 
 ## 6. Gate E: full playable UI
 
@@ -109,23 +115,37 @@ The room can follow Colonist's player seats, invitation, settings, chat, and fix
 
 **Pass condition:** four separate browsers finish a rules-correct match and rematch without manual repair. An outsider or another player cannot see a private hand, hidden card, or deck order.
 
-## 7. Gate F: hosting, QA, and handoff
+## 7. Gate F: larger-player Base board
+
+This is part of the release scope, after the current 3–4 player match is manually validated. The [larger-map reference index](../../analysis/large-map-reference-index-2026-09-28.md) links the exact board previews and gameplay references. [Colonist's published larger-player rules](https://colonist.io/catan-rules/5-6-player) specify a 30-tile board, 24 cards of each resource, and 34 development cards for 5–6 players. Its Special Build Phase lets eligible players build and buy development cards after another player's turn, but not trade, play development cards, or win during that phase. The current 19-hex board and four-seat UI cannot simply be enlarged to satisfy these rules. The 7–8 player board remains a separate future scope decision.
+
+1. Write the 5–6 player rule and room contract: board inventory, number/port placement, initial setup, piece/card supplies, Special Build Phase timing and eligibility, win timing, and room configuration. Preserve the 3–4 player behavior.
+2. Extend board generation and rendering to select the correct graph and visual composition for each supported player count. Update hit targets, fit/zoom, legal-placement overlays, and phone navigation so the expanded board stays playable.
+3. Extend room identity, seats, colors, capacity, host settings, Supabase checks, private views, and Realtime membership to six players. Reject unsupported seat/map combinations on the server.
+4. Implement the Special Build Phase as authoritative game state, including pass/finish behavior, restrictions, reconnect, and the delayed win rule. Adjust resource bank and development deck inventories for each board size.
+5. Add Figma host/guest and match states for the expanded board, extra player rows, Special Build control, and the phone layout. Link them in [design-handoff.md](design-handoff.md).
+6. Manually validate a complete match with six isolated browser identities. Check full-room rejection, opening placements, production, a Special Build round, trade restrictions, development card restrictions, reconnect, privacy, victory timing, and rematch. Record steps and observed outcomes; create no permanent automated tests.
+
+**Pass condition:** six friends can finish and rematch a rules-correct private Base game through the Supabase-backed UI without manual database repair.
+
+## 8. Gate G: hosting, QA, and handoff
 
 The owner-created Supabase project and its Codex MCP connection are available. Cloudflare account access is still needed at hosted integration. Figma team access already exists.
 
 1. Use the existing Supabase project `shadman-app`. Apply migrations; configure Auth, private Realtime, site/redirect URLs, and the command function. Run database and access checks with disposable users. Keep secret/service keys on the server; the browser receives only the project URL and publishable key.
 2. Connect the Git repository to [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) and deploy Vite output as [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/). Configure the SPA fallback so room/game deep links survive refresh. Start with the free workers.dev domain. Current documentation says [static-asset requests are free and unlimited](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
-3. Run a remote host plus three-friend test: invite, join, ready, start, roll, trade, disconnect/reconnect, win, and rematch. Repeat access tests with an outsider, forged actor, guessed code, and stale/replayed command. Check phone and small laptop layouts.
+3. Manually run remote matches at 3–4 seats and six seats: invite, join, ready, start, roll, trade, Special Build for larger games, disconnect/reconnect, win, and rematch. Repeat access checks with an outsider, forged actor, guessed code, and stale/replayed command. Check phone and small laptop layouts.
 4. Inspect logs and actual usage. [Supabase Free](https://supabase.com/pricing) is plausible for a few turn-based rooms, but it can pause after a week of low activity. Document how to resume it, export/restore data, check usage, and roll back a deployment; recheck provider limits at launch.
-5. Keep source, migrations, tests, asset manifest, design handoff, README, and operating runbook in this product folder. Tag a release after the remote match and privacy checks pass.
+5. Keep source, migrations, asset manifest, design handoff, README, and operating runbook in this product folder. Tag a release after the manual remote match and privacy checks pass.
 
-## 8. Current work packet
+## 9. Current work packet
 
-The rules, room, command, and visibility contracts; editable Figma room flow; repository and app shell; pure Base engine; local room and match services; and interactive match UI are present. A three-tab browser preview has passed create → join → ready → start → opening → roll → build → trade → refresh → chat checks.
+The rules, room, command, and visibility contracts; editable Figma flow; Base engine; and interactive UI are present. The hosted Supabase backend has passed account creation, create → join → ready → start, a live opening move, and automatic setup timeout with three browser identities. Earlier browser-only preview checks covered more match actions; they do not prove hosted gameplay.
 
-1. Start Docker Desktop, run the local Supabase stack, reset the migrations, and serve both command functions. Verify anonymous sign-in, room membership, game-view RLS, and private Realtime with separate browser profiles.
-2. Finish one complete local Supabase-backed match through the UI, including seven/discard/robber, development cards, victory, rematch, and reconnect. Capture bugs as rule or interface regression tests.
-3. Finish the remaining Figma dialogs and phone states, then compare them with the running app at 1280 × 720 and 390 × 844. Keep the imported asset provenance and design handoff current.
-4. Use the owner-created Supabase project to apply migrations and function settings. After Cloudflare account access is available, deploy the static app and run a four-friend remote playtest. Finish the operating runbook after real hosting behavior is observed.
+1. Finish one complete hosted Supabase-backed match through the UI, including seven/discard/robber, development cards, victory, rematch, and reconnect. Record each bug, its manual reproduction steps, and the observed result after the fix; do not add automated tests.
+2. Manually verify member, outsider, and signed-out access; full-room rejection; race/stale command handling; private game views; and Realtime reconnect with isolated browser identities. Optionally repeat against the local Docker stack when available.
+3. Implement Gate F's 5–6 player Base board, room capacity, Special Build Phase, and responsive screens after the standard match works end to end. Manually complete a full six-player game before hosting.
+4. Finish the remaining Figma dialogs and phone states for both board sizes, then compare them with the running app at 1280 × 720 and 390 × 844. Keep the imported asset provenance and design handoff current.
+5. After Cloudflare account access is available, deploy the static app, allow its exact HTTPS origin in the Edge Functions, and run remote-device playthroughs at both player counts. Remove the disposable QA accounts/room before wider invitations, and configure a mail sender for password recovery. Finish the operating runbook after real hosting behavior is observed.
 
-The first two steps do not need hosted Supabase or Cloudflare accounts. The local Supabase run does need Docker Desktop to be running on this machine.
+The first two steps use the existing hosted Supabase project. The optional local stack needs Docker Desktop to be running on this machine.
