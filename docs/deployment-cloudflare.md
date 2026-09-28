@@ -7,26 +7,30 @@ https://colonist-webapp.faizansagheer346c.workers.dev/. It was built locally wit
 application fallback, and is on the Workers Free plan. Supabase separately
 provides Auth, room/game commands, database storage, and Realtime.
 
-The existing `comicfluent` Pages project was not changed. The Cloudflare GitHub
-connection currently belongs to `faizan346`; this Worker has no Git integration
-and does not deploy automatically when `shadman346/colonist-webapp` changes.
-The direct upload did not grant Cloudflare access to the GitHub repository.
+The existing `comicfluent` Pages project was not changed. The initial release
+used a dashboard upload. Subsequent pushes to `main` in
+`shadman346/colonist-webapp` run `.github/workflows/deploy.yml` to build and
+deploy this Worker. The Cloudflare deployment token is stored as the
+`CLOUDFLARE_API_TOKEN` GitHub Actions secret and has **Individual Workers
+Editor** access to `colonist-webapp` only. The repo's Actions variables hold
+`CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, and the public
+`VITE_SUPABASE_PUBLISHABLE_KEY`. No secret or service-role Supabase key is used
+by the browser build.
 
 ## Deploy an update
 
-1. Keep `.env.local` populated with `VITE_SUPABASE_URL` and
-   `VITE_SUPABASE_PUBLISHABLE_KEY` for the `shadman-app` project. These values
-   are embedded in the browser build; never use a service-role or secret key.
-2. Run `npm run build` locally.
-3. In Cloudflare Workers & Pages, open `colonist-webapp`, choose **New deployment**,
-   and upload the contents of `dist/`. Preserve the single-page application
-   not-found handling setting.
-4. Open the public URL and manually check room entry and a direct invite link.
+1. Push the intended code to `main`. GitHub Actions runs `npm ci`, the TypeScript
+   and Vite production build, then `wrangler deploy` using the Worker-only token.
+   A manual run is also available through the workflow's **Run workflow** action.
+2. Check that the GitHub Actions run and Cloudflare deployment completed.
+3. Open the public URL and manually check sign-in, room entry, and a direct
+   invite link. For game changes, use separate player identities and complete
+   the applicable scenarios in the manual validation handoff.
 
-`wrangler.jsonc` also names the same Worker and static asset directory if CLI
-deployment is configured later. A Git connection can be added separately to
-enable builds on push; limit the Cloudflare GitHub app to this repository if
-that is chosen, and set the two `VITE_` values as build variables.
+For local builds, keep `.env.local` populated with the same two public Supabase
+values. `wrangler.jsonc` names `colonist-webapp`, points at `dist/`, and keeps
+the single-page application fallback. Do not create permanent automated tests
+or run historical tests as a deployment gate.
 
 ## Backend origin
 
