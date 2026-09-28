@@ -517,6 +517,14 @@ export function onRoomChange(codeInput: string, callback: () => void,
       current.status = status;
       for (const listener of current.listeners) listener.onStatus?.(status);
     };
+    const retry = () => {
+      if (roomSubscriptions.get(code) !== current || current.retryTimer !== null) return;
+      statusChange("reconnecting");
+      const channel = current.channel;
+      current.channel = null;
+      if (channel) void getClient().removeChannel(channel);
+      current.retryTimer = window.setTimeout(start, 2_000);
+    };
     const connect = async () => {
       current.retryTimer = null;
       await authenticatedActor();
@@ -528,23 +536,21 @@ export function onRoomChange(codeInput: string, callback: () => void,
       if (sessionError || !sessionData.session) throw sessionError ?? new Error("Session unavailable.");
       await supabase.realtime.setAuth(sessionData.session.access_token);
       if (roomSubscriptions.get(code) !== current) return;
-      current.channel = supabase
+      const channel = supabase
         .channel(`room:${data.id}`, { config: { private: true } })
         .on("broadcast", { event: "revision" }, signal)
-        .on("broadcast", { event: "game-revision" }, signal)
-        .subscribe((status) => {
-          if (roomSubscriptions.get(code) !== current) return;
+        .on("broadcast", { event: "game-revision" }, signal);
+      current.channel = channel;
+      channel.subscribe((status, error) => {
+          if (roomSubscriptions.get(code) !== current || current.channel !== channel) return;
           if (status === "SUBSCRIBED") { statusChange("live"); signal(); }
           else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            statusChange("reconnecting");
+            console.warn("Room realtime connection", status, error?.message);
+            retry();
           }
         });
     };
-    const start = () => void connect().catch(() => {
-      if (roomSubscriptions.get(code) !== current) return;
-      statusChange("reconnecting");
-      current.retryTimer = window.setTimeout(start, 2_000);
-    });
+    const start = () => void connect().catch(retry);
     start();
   }
   const listener: RoomListener = { callback, onStatus };

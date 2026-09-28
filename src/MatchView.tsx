@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
+  ArrowLeftRight,
   Check,
   Copy,
-  Dice5,
-  Hammer,
   MessageCircle,
   Minus,
   Plus,
@@ -12,11 +11,14 @@ import {
   Shield,
   ShoppingBasket,
   Sparkles,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
-import { RESOURCES, type DevelopmentCard, type GameView, type Hex, type Resource, type ResourceCounts } from "../engine";
+import { COSTS, RESOURCES, type DevelopmentCard, type GameView, type Hex, type Resource, type ResourceCounts } from "../engine";
 import { isLocalPreview, type LocalIdentity, type RoomView } from "./room/roomService";
 import { createMatchClient, type MatchCommand } from "./match/matchService";
+import { playTurnSound, setTurnSoundEnabled, turnSoundEnabled } from "./match/turnCue";
 import "./matchStyles.css";
 
 type Placement = "road" | "settlement" | "city" | null;
@@ -69,6 +71,10 @@ function emptyCounts(): ResourceCounts {
 
 function sumCounts(counts: ResourceCounts): number {
   return RESOURCES.reduce((sum, resource) => sum + counts[resource], 0);
+}
+
+function canPay(hand: ResourceCounts, cost: ResourceCounts): boolean {
+  return RESOURCES.every((resource) => hand[resource] >= cost[resource]);
 }
 
 const BOARD_ORIGIN = { x: 396, y: 372 };
@@ -190,11 +196,13 @@ function keyboardClick(event: React.KeyboardEvent<SVGElement>, action: () => voi
   }
 }
 
-function GameBoard({ view, placement, selectedVertex, onSelectVertex, onCommand, busy }: {
+function GameBoard({ view, placement, selectedVertex, roadAnchor, onSelectVertex, onRoadAnchor, onCommand, busy }: {
   view: GameView;
   placement: Placement;
   selectedVertex: SelectedVertex;
+  roadAnchor: string | null;
   onSelectVertex: (selected: SelectedVertex) => void;
+  onRoadAnchor: (vertexId: string) => void;
   onCommand: (command: MatchCommand) => void;
   busy: boolean;
 }) {
@@ -206,11 +214,18 @@ function GameBoard({ view, placement, selectedVertex, onSelectVertex, onCommand,
       ? view.legal.setupSettlementVertices
       : placement === "settlement" ? view.legal.settlementVertices : []
     : [];
-  const roadIds = active
+  const allRoadIds = active
     ? view.phase === "setup-road"
       ? view.legal.setupRoadEdges
       : view.phase === "road-building" || placement === "road"
         ? view.legal.roadEdges : []
+    : [];
+  const roadIds = roadAnchor
+    ? allRoadIds.filter((edgeId) => view.board.edges[edgeId]?.vertexIds.includes(roadAnchor))
+    : view.phase === "setup-road" ? [] : allRoadIds;
+  const clickableHouses = active && (view.phase === "setup-road" || view.phase === "road-building" || placement === "road")
+    ? Object.entries(view.buildings).filter(([vertexId, building]) => building.ownerId === view.self.id &&
+      allRoadIds.some((edgeId) => view.board.edges[edgeId]?.vertexIds.includes(vertexId)))
     : [];
   const cityIds = active && placement === "city" ? view.legal.cityVertices : [];
   const robberIds = active ? view.legal.robberHexes : [];
@@ -309,7 +324,8 @@ function GameBoard({ view, placement, selectedVertex, onSelectVertex, onCommand,
         const action = () => onCommand({ type: view.phase === "setup-road" ? "place-setup-road" : "build-road", edgeId });
         return (
           <g key={edgeId} className="match-legal-road" role="button" tabIndex={0} aria-label={edgeLabel(view, edgeId, "Place road")} onClick={() => !busy && action()} onKeyDown={(event) => keyboardClick(event, () => !busy && action())}>
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#fff6db" strokeWidth="11" strokeLinecap="round" strokeDasharray="7 6" />
+            <line className="match-road-glow" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#ffd447" strokeWidth="13" strokeLinecap="round" />
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#fff6cb" strokeWidth="5" strokeLinecap="round" />
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="28" />
           </g>
         );
@@ -330,6 +346,23 @@ function GameBoard({ view, placement, selectedVertex, onSelectVertex, onCommand,
             )}
           </g>
         );
+      })}
+      {clickableHouses.map(([vertexId]) => {
+        const vertex = vertices[vertexId]!;
+        const point = atVertex(vertex.x, vertex.y, size);
+        const chosen = roadAnchor === vertexId;
+        return <g key={`${vertexId}:road-anchor`} className="match-road-anchor" role="button" tabIndex={0}
+          aria-label={vertexLabel(view, vertexId, "Choose roads from your house")}
+          onClick={() => !busy && onRoadAnchor(vertexId)}
+          onKeyDown={(event) => keyboardClick(event, () => !busy && onRoadAnchor(vertexId))}>
+          <circle cx={point.x} cy={point.y} r={chosen ? 25 : 20} fill="transparent" stroke={chosen ? "#fff4b5" : "#ffdf57"} strokeWidth={chosen ? 5 : 3} />
+          <circle cx={point.x} cy={point.y} r="28" fill="transparent" />
+          {chosen && <g transform={`translate(${point.x - 29} ${point.y - 103})`}>
+            <rect width="62" height="67" rx="8" fill="#75d1e7" stroke="#fff9de" strokeWidth="3" />
+            <image href={pieceAsset("road", playerPiece.get(view.self.id) ?? "sky")} x="24" y="10" width="13" height="45" />
+            <text x="52" y="17" textAnchor="middle" fontSize="10" fontWeight="900" fill="#163e5d">{Math.max(0, 15 - Object.values(view.roads).filter((ownerId) => ownerId === view.self.id).length)}</text>
+          </g>}
+        </g>;
       })}
       {[...settlementIds, ...cityIds].map((vertexId) => {
         const vertex = vertices[vertexId]!;
@@ -357,12 +390,6 @@ function GameBoard({ view, placement, selectedVertex, onSelectVertex, onCommand,
           </g>
         );
       })}
-      {view.lastRoll && (
-        <g className="match-roll-token">
-          <rect x="700" y="558" width="160" height="53" rx="12" fill="#fff4dc" stroke="#b3864b" strokeWidth="3" />
-          <text x="780" y="592" textAnchor="middle" fontSize="20" fontWeight="800" fill="#274457">{view.lastRoll[0]} + {view.lastRoll[1]} = {view.lastRoll[0] + view.lastRoll[1]}</text>
-        </g>
-      )}
     </svg>
   );
 }
@@ -373,6 +400,19 @@ function ResourceBadge({ resource, count, compact = false }: { resource: Resourc
     <img src={resourceCardAsset(resource)} alt={`${info.label} resource card`} />
     <strong>{count}</strong>
   </span>;
+}
+
+function CostPreview({ cost }: { cost: ResourceCounts }) {
+  return <span className="match-piece-cost">{RESOURCES.filter((resource) => cost[resource] > 0).map((resource) => <span key={resource}><img src={resourceCardAsset(resource)} alt={resources[resource].label} />{cost[resource] > 1 && <b>{cost[resource]}</b>}</span>)}</span>;
+}
+
+function CityIcon({ color }: { color: string }) {
+  return <svg className="match-city-piece" viewBox="0 0 56 46" aria-hidden="true">
+    <path d="M4 42V19L17 8L30 19V42Z" fill={color} stroke="#153d60" strokeWidth="3" strokeLinejoin="round" />
+    <path d="M25 42V14L39 3L53 14V42Z" fill={color} stroke="#153d60" strokeWidth="3" strokeLinejoin="round" />
+    <path d="M32 42V29H43V42" fill="#fff0a8" stroke="#153d60" strokeWidth="2" />
+    <path d="M8 24L17 16L26 24M29 19L39 11L49 19" fill="none" stroke="#f5d18c" strokeWidth="2" />
+  </svg>;
 }
 
 function DieFace({ value }: { value: number }) {
@@ -415,7 +455,7 @@ function bankRatio(view: GameView, give: Resource): number {
 }
 
 function TradeCardRow({ label, counts, maxFor, onChange }: { label: string; counts: ResourceCounts; maxFor: (resource: Resource) => number; onChange: (resource: Resource, value: number) => void }) {
-  return <div className="match-trade-card-row"><strong>{label}</strong><div>{RESOURCES.map((resource) => <div className={`match-trade-card ${counts[resource] ? "picked" : ""}`} key={resource}>
+  return <div className="match-trade-card-row"><div className="match-trade-row-caption"><span>{label === "YOU GIVE" ? "↓" : "↑"}</span><strong>{label}</strong></div><div className="match-trade-card-list">{RESOURCES.map((resource) => <div className={`match-trade-card ${counts[resource] ? "picked" : ""}`} key={resource}>
     <img src={resourceCardAsset(resource)} alt={`${resources[resource].label} card`} />
     <button type="button" className="match-trade-card-add" aria-label={`Add ${resources[resource].label} to ${label}`} disabled={counts[resource] >= maxFor(resource)} onClick={() => onChange(resource, counts[resource] + 1)}>+</button>
     {counts[resource] > 0 && <><b>{counts[resource]}</b><button type="button" className="match-trade-card-remove" aria-label={`Remove ${resources[resource].label} from ${label}`} onClick={() => onChange(resource, counts[resource] - 1)}>−</button></>}
@@ -437,28 +477,26 @@ function TradePanel({ view, onCommand, onClose, busy, initialTab }: { view: Game
     const setter = which === "give" ? setOfferGive : setOfferWant;
     setter((current) => ({ ...current, [resource]: value }));
   };
+  const stock = <div className="match-trade-stock" aria-label="Your resource cards">{RESOURCES.map((resource) => <div key={resource} className={view.self.resources[resource] ? "owned" : ""}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><b>{view.self.resources[resource]}</b></div>)}</div>;
+  const canSend = view.legal.canOfferTrade && Boolean(friendId) && sumCounts(offerGive) > 0 && sumCounts(offerWant) > 0 && RESOURCES.every((resource) => offerGive[resource] <= view.self.resources[resource]) && !busy;
   return (
     <section className="match-trade-dock" role="dialog" aria-label="Trade resources">
-      <header><strong>TRADE {tab === "friend" ? "WITH FRIENDS" : "WITH BANK"}</strong><button type="button" aria-label="Close trade" onClick={onClose}><X size={17} /></button></header>
-      <div className="match-trade-tabs">
-        <button className={tab === "friend" ? "selected" : ""} onClick={() => setTab("friend")} type="button">Friends</button>
-        <button className={tab === "bank" ? "selected" : ""} onClick={() => setTab("bank")} type="button">Bank & ports</button>
-      </div>
+      <header><strong>TRADE {tab === "friend" ? "WITH FRIENDS" : "WITH BANK & PORTS"}</strong><button type="button" aria-label="Close trade" onClick={onClose}><X size={17} /></button></header>
+      <div className="match-trade-workspace"><div className="match-trade-main">{stock}
       {tab === "bank" ? (
-        <div className="match-trade-content">
-          <p>Choose cards to give · a port lowers the exchange rate.</p>
-          <div className="match-trade-card-row"><strong>GIVE {actualGive ? bankRatio(view, actualGive) : 4} MATCHING CARDS</strong><div>{RESOURCES.map((resource) => <button key={resource} type="button" className={`match-bank-pick ${actualGive === resource ? "selected" : ""}`} disabled={!availableGive.includes(resource)} onClick={() => setGive(resource)}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><span>{bankRatio(view, resource)}:1</span></button>)}</div></div>
-          <div className="match-trade-card-row"><strong>RECEIVE 1 CARD</strong><div>{RESOURCES.map((resource) => <button key={resource} type="button" className={`match-bank-pick ${actualReceive === resource ? "selected" : ""}`} disabled={resource === actualGive || !view.bank[resource]} onClick={() => setReceive(resource)}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><span>{view.bank[resource]} left</span></button>)}</div></div>
-          <div className="match-trade-footer"><span>{actualGive ? `${bankRatio(view, actualGive)} ${resources[actualGive].label} → 1 ${actualReceive ? resources[actualReceive].label : "card"}` : "Collect enough matching cards to trade."}</span><button className="match-primary-action" type="button" disabled={!actualGive || !actualReceive || busy} onClick={() => onCommand({ type: "bank-trade", give: actualGive!, receive: actualReceive! })}>Trade with bank</button></div>
-        </div>
+        <><div className="match-trade-card-row"><div className="match-trade-row-caption"><span>↓</span><strong>GIVE {actualGive ? bankRatio(view, actualGive) : 4} MATCHING</strong></div><div className="match-trade-card-list">{RESOURCES.map((resource) => <button key={resource} type="button" className={`match-bank-pick ${actualGive === resource ? "selected" : ""} ${availableGive.includes(resource) ? "available" : ""}`} disabled={!availableGive.includes(resource)} onClick={() => setGive(resource)}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><span>{bankRatio(view, resource)}:1</span></button>)}</div></div>
+          <div className="match-trade-card-row"><div className="match-trade-row-caption"><span>↑</span><strong>RECEIVE ONE</strong></div><div className="match-trade-card-list">{RESOURCES.map((resource) => <button key={resource} type="button" className={`match-bank-pick ${actualReceive === resource ? "selected" : ""}`} disabled={resource === actualGive || !view.bank[resource]} onClick={() => setReceive(resource)}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><span>{view.bank[resource]} left</span></button>)}</div></div></>
       ) : (
-        <div className="match-trade-content">
-          <div className="match-trade-players"><span>OFFER TO</span>{view.players.filter((player) => player.id !== view.self.id).map((player) => <button key={player.id} type="button" className={friendId === player.id ? "selected" : ""} onClick={() => setFriendId(player.id)}>{player.name}</button>)}</div>
+        <><div className="match-trade-players"><span>OFFER TO</span>{view.players.filter((player) => player.id !== view.self.id).map((player) => <button key={player.id} type="button" className={friendId === player.id ? "selected" : ""} onClick={() => setFriendId(player.id)}>{player.name}</button>)}</div>
           <TradeCardRow label="YOU GIVE" counts={offerGive} onChange={(resource, amount) => setCount("give", resource, amount)} maxFor={(resource) => view.self.resources[resource]} />
           <TradeCardRow label="YOU WANT" counts={offerWant} onChange={(resource, amount) => setCount("want", resource, amount)} maxFor={() => 19} />
-          <div className="match-trade-footer"><span>Cards move only after your friend accepts.</span><button className="match-primary-action" type="button" disabled={!view.legal.canOfferTrade || !friendId || !sumCounts(offerGive) || !sumCounts(offerWant) || !RESOURCES.every((resource) => offerGive[resource] <= view.self.resources[resource]) || busy} onClick={() => onCommand({ type: "offer-trade", toPlayerId: friendId, give: offerGive, want: offerWant })}>Send offer</button></div>
-        </div>
-      )}
+        </>
+      )}</div><div className="match-trade-rail">
+        {tab === "friend" ? <button type="button" className="match-trade-rail-primary" disabled={!canSend} onClick={() => onCommand({ type: "offer-trade", toPlayerId: friendId, give: offerGive, want: offerWant })}><Check size={22} />SEND OFFER</button>
+          : <button type="button" className="match-trade-rail-primary" disabled={!actualGive || !actualReceive || busy} onClick={() => onCommand({ type: "bank-trade", give: actualGive!, receive: actualReceive! })}><Check size={22} />TRADE BANK</button>}
+        <button type="button" className={tab === "bank" ? "selected" : ""} onClick={() => setTab(tab === "bank" ? "friend" : "bank")}><ArrowLeftRight size={22} />{tab === "bank" ? "FRIENDS" : "BANK"}</button>
+        <button type="button" onClick={onClose}><X size={24} />CLOSE</button>
+      </div></div>
     </section>
   );
 }
@@ -570,10 +608,11 @@ function phaseMessage(view: GameView, placement: Placement) {
     ? `Waiting for ${active}. Your Special Build is reserved for the end of this turn.`
     : `Waiting for ${active}. You can request a Special Build after this turn.`;
   if (view.activePlayerId !== view.self.id) return `Waiting for ${active} to ${phaseLabels[view.phase].toLowerCase()}.`;
+  if (view.phase === "setup-road") return "Click the house you just placed, then choose a glowing road.";
   if (placement) return `Choose a highlighted ${placement === "road" ? "edge" : "corner"} on the island.`;
   if (view.phase === "robber-move") return "Choose a highlighted tile for the robber.";
   if (view.phase === "road-building") return "Place your free road on a highlighted edge.";
-  if (view.phase === "setup-settlement" || view.phase === "setup-road") return "Choose one of the highlighted spots on the island.";
+  if (view.phase === "setup-settlement") return "Choose a highlighted corner, then confirm your house.";
   if (view.phase === "robber-steal") return "Choose a friend to take one random resource from.";
   if (view.phase === "pre-roll") return "Roll the dice to start your turn.";
   if (view.phase === "special-build") return "Build with the cards you have, then pass. Trading and development card play are unavailable.";
@@ -590,7 +629,7 @@ function actionMessage(view: GameView, action: GameView["recentActions"][number]
     "choose-robber-victim": "stole a card",
     "build-road": "built a road",
     "build-settlement": "built a settlement",
-    "build-city": "built a city",
+    "build-city": "upgraded a house",
     "buy-development": "bought a development card",
     "play-knight": "played a Knight",
     "play-road-building": "played Road Building",
@@ -612,13 +651,31 @@ function actionMessage(view: GameView, action: GameView["recentActions"][number]
   return `${name} ${label}.`;
 }
 
-function productionMessages(view: GameView, action: GameView["recentActions"][number]): string[] {
-  if (!action.production) return [];
-  return Object.entries(action.production).map(([playerId, counts]) => {
-    const name = view.players.find((player) => player.id === playerId)?.name ?? "A player";
-    const cards = RESOURCES.filter((resource) => counts[resource] > 0).map((resource) => `${counts[resource]} ${resources[resource].label}`).join(", ");
-    return `${name} received ${cards}.`;
-  });
+function MatchHistory({ view }: { view: GameView }) {
+  return <div className="match-history match-sidebar-section">
+    <h2>MATCH HISTORY</h2>
+    <div className="match-history-scroll">
+      {[...view.recentActions].reverse().map((action) => {
+        const player = view.players.find((candidate) => candidate.id === action.actorId);
+        const name = player?.name ?? "A player";
+        const sentence = actionMessage(view, action).slice(name.length).trim();
+        return <div className="match-history-group" key={action.number}>
+          <div className="match-history-entry"><span className="match-history-person">♙</span><div><strong>{name}</strong> {sentence}
+            {action.type === "roll" && action.rollDice && <span className="match-history-dice"><DieFace value={action.rollDice[0]} /><DieFace value={action.rollDice[1]} /></span>}
+            {action.bankTrade && <span className="match-history-exchange"><b>{action.bankTrade.ratio}×</b><img src={resourceCardAsset(action.bankTrade.give)} alt={resources[action.bankTrade.give].label} /><span>→</span><img src={resourceCardAsset(action.bankTrade.receive)} alt={resources[action.bankTrade.receive].label} /></span>}
+            {(["build-road", "place-setup-road"].includes(action.type)) && <img className="match-history-piece road" src={pieceAsset("road", player?.color ?? "sky")} alt="road" />}
+            {(["build-settlement", "place-setup-settlement"].includes(action.type)) && <img className="match-history-piece" src={pieceAsset("settlement", player?.color ?? "sky")} alt="house" />}
+            {action.type === "build-city" && <span className="match-history-city"><CityIcon color={palette[player?.color ?? "sky"] ?? "#f5b62e"} /></span>}
+          </div></div>
+          {action.production && Object.entries(action.production).map(([playerId, counts]) => <div className="match-history-entry receipt" key={playerId}>
+            <span className="match-history-person">♙</span><div><strong>{view.players.find((candidate) => candidate.id === playerId)?.name ?? "A player"}</strong> received
+              <span className="match-history-cards">{RESOURCES.filter((resource) => counts[resource] > 0).map((resource) => <span key={resource}><img src={resourceCardAsset(resource)} alt={resources[resource].label} /><b>{counts[resource]}</b></span>)}</span>
+            </div>
+          </div>)}
+        </div>;
+      })}
+    </div>
+  </div>;
 }
 
 function PanelShell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -645,7 +702,7 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const [busy, setBusy] = useState(false);
   const [placement, setPlacement] = useState<Placement>(null);
   const [selectedVertex, setSelectedVertex] = useState<SelectedVertex>(null);
-  const [buildMenuOpen, setBuildMenuOpen] = useState(false);
+  const [roadAnchor, setRoadAnchor] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [tradeInitialTab, setTradeInitialTab] = useState<TradeTab>("friend");
   const [rolling, setRolling] = useState(false);
@@ -654,10 +711,12 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const [chatBusy, setChatBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
+  const [soundOn, setSoundOn] = useState(turnSoundEnabled);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const expiryInFlight = useRef(false);
   const lastExpiryAttempt = useRef(0);
   const seenActionNumber = useRef<number | null>(null);
+  const announcedTurn = useRef<string | null>(null);
   const flightTimeout = useRef<number | null>(null);
 
   useEffect(() => {
@@ -691,9 +750,20 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   useEffect(() => {
     setPlacement(null);
     setSelectedVertex(null);
-    setBuildMenuOpen(false);
+    setRoadAnchor(null);
     setPanel(null);
   }, [view?.phase, view?.activePlayerId]);
+
+  useEffect(() => {
+    if (!view || view.activePlayerId !== view.self.id || view.phase === "completed") return;
+    const key = `${room.gameId ?? room.code}:${view.turn}:${view.activePlayerId}`;
+    if (announcedTurn.current === key) return;
+    announcedTurn.current = key;
+    const storageKey = `colonist-turn-announced:${room.code}`;
+    if (window.sessionStorage.getItem(storageKey) === key) return;
+    window.sessionStorage.setItem(storageKey, key);
+    if (soundOn) playTurnSound();
+  }, [view?.activePlayerId, view?.turn, view?.phase, room.code, room.gameId, soundOn]);
 
   useEffect(() => {
     if (!view) return;
@@ -728,6 +798,7 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
       setView(next);
       setPlacement(null);
       setSelectedVertex(null);
+      setRoadAnchor(null);
       if (item.type !== "bank-trade" && item.type !== "buy-development") setPanel(null);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "That action could not be completed.");
@@ -761,7 +832,16 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const timerText = remainingSeconds === null ? "" : `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
   const myTurn = view.self.id === view.activePlayerId;
   const handSize = sumCounts(view.self.resources);
-  const canBuild = Boolean(view.legal.roadEdges.length || view.legal.settlementVertices.length || view.legal.cityVertices.length);
+  const selfColor = view.players.find((player) => player.id === view.self.id)?.color ?? "sky";
+  const roadReady = Boolean(view.legal.setupRoadEdges.length || view.legal.roadEdges.length);
+  const houseReady = Boolean(view.legal.setupSettlementVertices.length || view.legal.settlementVertices.length);
+  const cityReady = view.legal.cityVertices.length > 0;
+  const knightCard = view.self.developmentCards.find((card) => card.type === "knight" && view.legal.playableDevelopmentCardIds.includes(card.id));
+  const robberReady = view.phase === "robber-move" || Boolean(knightCard);
+  const devReady = view.legal.canBuyDevelopment || view.legal.playableDevelopmentCardIds.length > 0;
+  const roadCount = Object.values(view.roads).filter((ownerId) => ownerId === view.self.id).length;
+  const houseCount = Object.values(view.buildings).filter((building) => building.ownerId === view.self.id && building.level === "settlement").length;
+  const cityCount = Object.values(view.buildings).filter((building) => building.ownerId === view.self.id && building.level === "city").length;
   const targets = boardTargets(view, placement);
   const latestChat = room.chat.slice(-8);
   return (
@@ -772,6 +852,7 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
         <span className="match-room-code">Room {room.code}</span>
         <span className="match-base">{view.players.length >= 5 ? "EXPANDED" : "BASE"} GAME · {view.victoryPointsToWin} POINTS</span>
         <button className="match-copy" type="button" title="Copy invite link" aria-label="Copy invite link" onClick={onCopy}><Copy size={17} /></button>
+        <button className="match-sound-toggle" type="button" aria-label={soundOn ? "Mute turn sound" : "Enable turn sound"} title={soundOn ? "Turn sound on" : "Turn sound off"} onClick={() => { setTurnSoundEnabled(!soundOn); setSoundOn(!soundOn); }}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
         <span className="match-turn-badge">TURN {view.turn || "SETUP"}</span>
         {remainingSeconds !== null && view.phase !== "completed" && <span className={`match-countdown ${remainingSeconds <= 15 ? "urgent" : ""}`} role="timer" aria-label={`${remainingSeconds} seconds remaining in this turn`}>{timerText}</span>}
         <span className={`match-connection ${connectionStatus}`}>{connectionStatus === "live" ? "Live" : connectionStatus === "reconnecting" ? "Reconnecting" : "Connecting"}</span>
@@ -781,11 +862,11 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
         <section className="match-board-area">
           <div className="match-phase-banner">
             <div><span className="match-phase-kicker">{isLocalPreview ? "LOCAL PREVIEW · " : ""}{view.phase === "completed" ? "GAME OVER" : myTurn ? "YOUR TURN" : `${active?.name.toUpperCase() ?? "FRIEND"}'S TURN`}</span><h1>{phaseLabels[view.phase]}</h1><p>{remainingSeconds === 0 ? "Time is up. Advancing the match…" : phaseMessage(view, placement)}</p></div>
-            {view.lastRoll && <span className="match-dice-result"><DieFace value={view.lastRoll[0]} /><DieFace value={view.lastRoll[1]} /><strong>= {view.lastRoll[0] + view.lastRoll[1]}</strong></span>}
           </div>
           {targets.length > 0 && <a className="match-skip-targets" href="#match-target-picker">Skip to legal positions</a>}
-          <div className="match-board-wrap"><GameBoard view={view} placement={placement} selectedVertex={selectedVertex} onSelectVertex={setSelectedVertex} onCommand={(item) => void command(item)} busy={busy} /></div>
-          {rolling && <div className="match-dice-throw" role="status" aria-label="Rolling two dice"><img src="/assets/colonist/pieces/dice-pair.png" alt="Two dice rolling" /><span>Rolling…</span></div>}
+          <div className="match-board-wrap"><GameBoard view={view} placement={placement} selectedVertex={selectedVertex} roadAnchor={roadAnchor} onSelectVertex={setSelectedVertex} onRoadAnchor={setRoadAnchor} onCommand={(item) => void command(item)} busy={busy} /></div>
+          {(view.legal.canRoll || rolling) && <button className={`match-sea-dice ${rolling ? "rolling" : "ready"}`} type="button" disabled={busy} aria-label="Roll two dice" onClick={() => void command({ type: "roll" })}><span className="match-sea-dice-faces"><DieFace value={3} /><DieFace value={5} /></span><strong>{rolling ? "Rolling…" : "Roll dice"}</strong></button>}
+          {!view.legal.canRoll && !rolling && view.lastRoll && <div className="match-sea-dice result" aria-label={`Last roll ${view.lastRoll[0]} and ${view.lastRoll[1]}, total ${view.lastRoll[0] + view.lastRoll[1]}`}><span className="match-sea-dice-faces"><DieFace value={view.lastRoll[0]} /><DieFace value={view.lastRoll[1]} /></span><strong>Rolled {view.lastRoll[0] + view.lastRoll[1]}</strong></div>}
           {actionError && <div className="match-error" role="alert">{actionError}<button type="button" onClick={() => setActionError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
           {busy && <div className="match-saving" role="status">Saving your move…</div>}
           <PendingTrade view={view} onCommand={(item) => void command(item)} busy={busy} />
@@ -801,35 +882,32 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
               <strong className="match-score">{player.id === view.self.id ? view.self.totalPoints : player.publicPoints}<small>VP</small></strong>
             </div>)}
           </div></div>
-          <div className="match-sidebar-section match-activity"><h2>ACTIVITY</h2>{view.recentActions.length ? [...view.recentActions].reverse().map((action) => <div key={action.number}><p>{actionMessage(view, action)}</p>{productionMessages(view, action).map((receipt) => <p className="match-production-receipt" key={receipt}>{receipt}</p>)}</div>) : <p>Game started. Build your first settlements and roads.</p>}{view.longestRoadHolderId && <p>Longest Road: {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</p>}{view.largestArmyHolderId && <p>Largest Army: {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</p>}</div>
+          <MatchHistory view={view} />
+          {(view.longestRoadHolderId || view.largestArmyHolderId) && <div className="match-awards">{view.longestRoadHolderId && <span>Longest Road · {view.players.find((player) => player.id === view.longestRoadHolderId)?.name}</span>}{view.largestArmyHolderId && <span>Largest Army · {view.players.find((player) => player.id === view.largestArmyHolderId)?.name}</span>}</div>}
           <div className="match-sidebar-section match-bank"><h2>BANK & PORTS</h2><div>{RESOURCES.map((resource) => <span key={resource} data-bank-resource={resource} title={resources[resource].label}><img src={resourceCardAsset(resource)} alt="" />{view.bank[resource]}</span>)}</div></div>
-          <div className="match-chat"><h2><MessageCircle size={16} /> CHAT</h2><div className="match-chat-messages">{view.recentActions.filter((action) => action.type === "roll").slice(-3).flatMap((action) => productionMessages(view, action).map((message) => <p className="match-chat-system" key={`${action.number}-${message}`}>{message}</p>))}{latestChat.length ? latestChat.map((line) => <p key={line.id}><strong>{line.name}:</strong> {line.text}</p>) : <p>Talk strategy with your friends.</p>}</div><form onSubmit={(event) => void sendMessage(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={240} aria-label="Game chat message" placeholder="Send a message" /><button type="submit" aria-label="Send message" disabled={!chatDraft.trim() || chatBusy}><Send size={17} /></button></form></div>
+          <details className="match-chat" open><summary><MessageCircle size={16} /> CHAT</summary><div className="match-chat-body"><div className="match-chat-messages">{latestChat.length ? latestChat.map((line) => <p key={line.id}><strong>{line.name}:</strong> {line.text}</p>) : <p>Talk strategy with your friends.</p>}</div><form onSubmit={(event) => void sendMessage(event)}><input value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} maxLength={240} aria-label="Game chat message" placeholder="Send a message" /><button type="submit" aria-label="Send message" disabled={!chatDraft.trim() || chatBusy}><Send size={17} /></button></form></div></details>
         </aside>
       </div>
 
       <div className="match-toolbar">
-        <div className="match-hand"><span className="match-toolbar-label">YOUR HAND · {handSize} CARDS</span><div className="match-hand-cards">{handSize ? RESOURCES.filter((resource) => view.self.resources[resource] > 0).map((resource) => <ResourceBadge key={resource} resource={resource} count={view.self.resources[resource]} />) : <span className="match-empty-hand">Your first resources arrive after your second settlement.</span>}</div></div>
-        <div className="match-actions"><span className="match-toolbar-label">ACTIONS</span><div className="match-action-row">
-          <button className="match-action-button roll" type="button" disabled={!view.legal.canRoll || busy} onClick={() => void command({ type: "roll" })}><Dice5 size={19} /> Roll dice</button>
-          <button className="match-action-button trade" type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} onClick={() => { setPlacement(null); setBuildMenuOpen(false); setTradeInitialTab("friend"); setPanel("trade"); }}><ShoppingBasket size={19} /> Trade</button>
-          <button className={`match-action-button build ${buildMenuOpen ? "selected" : ""}`} type="button" disabled={(!canBuild && view.phase !== "robber-move") || busy} onClick={() => { setPanel(null); setBuildMenuOpen(!buildMenuOpen); if (buildMenuOpen) { setPlacement(null); setSelectedVertex(null); } }}><Hammer size={19} /> {view.phase === "robber-move" ? "Robber" : "Build"}</button>
-          <button className="match-action-button dev" type="button" disabled={!(view.legal.canBuyDevelopment || view.self.developmentCards.length) || busy} onClick={() => { setPlacement(null); setPanel("development"); }}><Sparkles size={18} /> Dev cards</button>
-          {view.legal.canRequestSpecialBuild && <button className={`match-action-button build ${view.legal.specialBuildRequested ? "selected" : ""}`} type="button" disabled={busy} onClick={() => void command({ type: "request-special-build", requested: !view.legal.specialBuildRequested })}>{view.legal.specialBuildRequested ? "Cancel build request" : "Request Special Build"}</button>}
-          {view.legal.canPassSpecialBuild && <button className="match-action-button end" type="button" disabled={busy} onClick={() => void command({ type: "pass-special-build" })}><Check size={18} /> Finish build</button>}
-          <button className="match-action-button end" type="button" disabled={!view.legal.canEndTurn || busy} onClick={() => void command({ type: "end-turn" })}><Check size={18} /> End turn</button>
+        <div className="match-hand"><span className="match-toolbar-label">YOUR HAND · {handSize} CARDS</span><div className="match-hand-cards">{handSize ? RESOURCES.filter((resource) => view.self.resources[resource] > 0).map((resource) => <ResourceBadge key={resource} resource={resource} count={view.self.resources[resource]} />) : <span className="match-empty-hand">Resources arrive after your second house.</span>}</div></div>
+        <button className={`match-trade-shortcut ${view.legal.bankTradeGive.length ? "bank-ready" : ""}`} type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} title={view.legal.bankTradeGive.length ? "Bank trade available" : "Trade with friends"} onClick={() => { setPlacement(null); setRoadAnchor(null); setTradeInitialTab(view.legal.bankTradeGive.length ? "bank" : "friend"); setPanel("trade"); }}><ArrowLeftRight size={27} /><span>TRADE</span></button>
+        <div className="match-piece-row" role="group" aria-label="Build and card actions">
+          <button className={`match-piece-button ${roadReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.road) ? "affordable" : ""} ${placement === "road" || view.phase === "setup-road" ? "selected" : ""}`} type="button" disabled={!roadReady || busy} title="Road · 1 wood and 1 brick" onClick={() => { setPanel(null); setRoadAnchor(null); setPlacement(placement === "road" ? null : "road"); }}><CostPreview cost={COSTS.road} /><img className="match-road-piece" src={pieceAsset("road", selfColor)} alt="" /><b>{Math.max(0, 15 - roadCount)}</b><span>ROAD</span></button>
+          <button className={`match-piece-button ${houseReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.settlement) ? "affordable" : ""} ${placement === "settlement" || view.phase === "setup-settlement" ? "selected" : ""}`} type="button" disabled={!houseReady || busy} title="House · 1 wood, 1 brick, 1 wool, 1 grain" onClick={() => { setPanel(null); setRoadAnchor(null); setSelectedVertex(null); setPlacement(placement === "settlement" ? null : "settlement"); }}><CostPreview cost={COSTS.settlement} /><img src={pieceAsset("settlement", selfColor)} alt="" /><b>{Math.max(0, 5 - houseCount)}</b><span>HOUSE</span></button>
+          <button className={`match-piece-button ${cityReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.city) ? "affordable" : ""} ${placement === "city" ? "selected" : ""}`} type="button" disabled={!cityReady || busy} title="House upgrade · 2 grain and 3 ore" onClick={() => { setPanel(null); setRoadAnchor(null); setSelectedVertex(null); setPlacement(placement === "city" ? null : "city"); }}><CostPreview cost={COSTS.city} /><CityIcon color={palette[selfColor] ?? selfColor} /><b>{Math.max(0, 4 - cityCount)}</b><span>UPGRADE</span></button>
+          <button className={`match-piece-button ${robberReady ? "ready" : ""}`} type="button" disabled={!robberReady || busy} title={knightCard ? "Play Knight and move robber" : "Move robber"} onClick={() => { setPanel(null); setPlacement(null); if (knightCard && view.phase !== "robber-move") void command({ type: "play-knight", cardId: knightCard.id }); }}><img src={baseAsset("icon-robber")} alt="" /><span>ROBBER</span></button>
+          <button className={`match-piece-button ${devReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.development) ? "affordable" : ""}`} type="button" disabled={!(view.legal.canBuyDevelopment || view.self.developmentCards.length) || busy} title="Special development cards · 1 wool, 1 grain, 1 ore to buy" onClick={() => { setPlacement(null); setRoadAnchor(null); setPanel("development"); }}><CostPreview cost={COSTS.development} /><img src={baseAsset("card-knight")} alt="" /><span>DEV CARD</span></button>
         </div>
-        {buildMenuOpen && <div className="match-build-picks" role="group" aria-label="Choose a game piece">
-          <button type="button" className={placement === "settlement" ? "selected" : ""} disabled={!view.legal.settlementVertices.length} onClick={() => { setPlacement("settlement"); setSelectedVertex(null); }}><img src={pieceAsset("settlement", view.players.find((player) => player.id === view.self.id)?.color ?? "sky")} alt="" /><span>House</span></button>
-          <button type="button" className={placement === "road" ? "selected" : ""} disabled={!view.legal.roadEdges.length} onClick={() => { setPlacement("road"); setSelectedVertex(null); }}><img src={pieceAsset("road", view.players.find((player) => player.id === view.self.id)?.color ?? "sky")} alt="" /><span>Road</span></button>
-          <button type="button" className={placement === "city" ? "selected" : ""} disabled={!view.legal.cityVertices.length} onClick={() => { setPlacement("city"); setSelectedVertex(null); }}><span className="match-city-art">▥</span><span>City</span></button>
-          <button type="button" disabled={!view.legal.bankTradeGive.length} onClick={() => { setPlacement(null); setBuildMenuOpen(false); setTradeInitialTab("bank"); setPanel("trade"); }}><img src={resourceCardAsset("wood")} alt="" /><span>Resources</span></button>
-          <button type="button" disabled={view.phase !== "robber-move"} onClick={() => { setPlacement(null); setBuildMenuOpen(false); }}><img src={baseAsset("icon-robber")} alt="" /><span>Robber</span></button>
-        </div>}
+        <div className="match-turn-controls">
+          {view.legal.canRequestSpecialBuild && <button type="button" disabled={busy} onClick={() => void command({ type: "request-special-build", requested: !view.legal.specialBuildRequested })}>{view.legal.specialBuildRequested ? "Cancel request" : "Special Build"}</button>}
+          {view.legal.canPassSpecialBuild && <button type="button" disabled={busy} onClick={() => void command({ type: "pass-special-build" })}>Finish build</button>}
+          <button type="button" disabled={!view.legal.canEndTurn || busy} onClick={() => void command({ type: "end-turn" })}><Check size={15} /> End turn</button>
+        </div>
         {targets.length > 0 && <details className="match-target-list">
           <summary id="match-target-picker">Choose from {targets.length} legal {targets.length === 1 ? "position" : "positions"}</summary>
           <div>{targets.map((target) => <button key={target.id} type="button" disabled={busy} onClick={() => { if ("vertexId" in target.command) setSelectedVertex({ id: target.command.vertexId, city: target.command.type === "build-city" }); else void command(target.command); }}>{target.label}</button>)}</div>
         </details>}
-        </div>
       </div>
       {flights.map((flight) => <div className="match-resource-flight" key={flight.id} style={{ left: flight.x, top: flight.y, "--flight-x": `${flight.dx}px`, "--flight-y": `${flight.dy}px`, animationDelay: `${flight.delay}ms` } as CSSProperties}><img src={resourceCardAsset(flight.resource)} alt="" /><strong>+{flight.count}</strong></div>)}
       {panel === "development" && <PanelShell title="Development cards" onClose={() => setPanel(null)}><DevelopmentPanel view={view} onCommand={(item) => void command(item)} busy={busy} /></PanelShell>}

@@ -100,6 +100,8 @@ export interface GameActionSummary {
   actorId: PlayerId;
   type: GameCommand['type'] | 'turn-expired';
   rollTotal?: number;
+  rollDice?: [number, number];
+  bankTrade?: { give: Resource; receive: Resource; ratio: number };
   /** Public resource receipts created by this roll. No private hand totals are exposed. */
   production?: Record<PlayerId, ResourceCounts>;
 }

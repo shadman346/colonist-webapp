@@ -407,6 +407,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
   state.regularNextPlayerId ??= null;
   state.lastTimeoutPlayerId = null;
   let production: Record<PlayerId, ResourceCounts> | undefined;
+  let bankTrade: { give: Resource; receive: Resource; ratio: number } | undefined;
 
   if (state.pendingTrade && !['accept-trade', 'reject-trade', 'cancel-trade', 'request-special-build'].includes(command.type)) {
     fail('TRADE_PENDING', 'Resolve the pending trade first');
@@ -603,6 +604,7 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
       requireRule(state.bank[command.receive] > 0, 'BANK_EMPTY', 'Requested resource is unavailable');
       toBank(state, player, counts([command.give, ratio]));
       fromBank(state, player, counts([command.receive, 1]));
+      bankTrade = { give: command.give, receive: command.receive, ratio };
       break;
     }
     case 'offer-trade': {
@@ -714,7 +716,8 @@ export function applyGameCommand(input: GameState, command: GameCommand, outcome
     actorId: command.actorId,
     type: command.type,
     ...(command.type === 'roll' && state.lastRoll
-      ? { rollTotal: state.lastRoll[0] + state.lastRoll[1] } : {}),
+      ? { rollTotal: state.lastRoll[0] + state.lastRoll[1], rollDice: [...state.lastRoll] as [number, number] } : {}),
+    ...(bankTrade ? { bankTrade } : {}),
     ...(production ? { production } : {}),
   });
   state.recentActions = state.recentActions.slice(-12);
