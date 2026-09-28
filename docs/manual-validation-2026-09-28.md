@@ -38,6 +38,7 @@ The host created a second hosted room, increased its capacity from four to five,
 
 ## Open release checks
 
+- The static UI was uploaded to a separate Cloudflare Worker. Its sign-in page rendered at `https://colonist-webapp.faizansagheer346c.workers.dev/`, and a direct `/room/example` navigation returned the same UI through the SPA fallback. The backend's `APP_ORIGINS` secret was set to this exact origin and its stored digest matched the intended value. Hosted sign-in and room commands still need a hands-on check with a player account.
 - Finish a complete hosted room/game and rematch, plus outsider/privacy checks, before claiming release-ready cross-device multiplayer.
 - Manually start and finish five- and six-player matches on the expanded Base board, including larger supplies and Special Build.
 - Complete a full remote match and rematch with isolated player identities, checking private hands and reconnect behavior.

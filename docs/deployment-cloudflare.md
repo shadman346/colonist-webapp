@@ -1,25 +1,49 @@
-# Cloudflare deployment preparation
+# Cloudflare deployment
 
-The web app is a Vite single-page application. wrangler.jsonc is ready to serve the dist/ build through Cloudflare Workers Static Assets. It is intentionally a static deployment: Supabase provides Auth, room/game commands, database storage, and Realtime.
+The Vite UI is hosted as a static Cloudflare Worker at
+https://colonist-webapp.faizansagheer346c.workers.dev/. It was built locally with
+`npm run build` and uploaded from `dist/` through the Cloudflare dashboard on
+28 September 2026. The Worker is named `colonist-webapp`, uses single-page
+application fallback, and is on the Workers Free plan. Supabase separately
+provides Auth, room/game commands, database storage, and Realtime.
 
-The config uses single-page-application fallback so direct visits to future room/game paths can load index.html. Cloudflare documents this behavior at https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/.
+The existing `comicfluent` Pages project was not changed. The Cloudflare GitHub
+connection currently belongs to `faizan346`; this Worker has no Git integration
+and does not deploy automatically when `shadman346/colonist-webapp` changes.
+The direct upload did not grant Cloudflare access to the GitHub repository.
 
-## Before publishing
+## Deploy an update
 
-1. Finish the local Supabase and authoritative match UI checks for both the standard and 5–6 player Base boards in the implementation plan.
-2. Use the existing [shadman-app Supabase project](supabase-connection.md). Its migrations, authenticated Edge Functions, email/password sign-in, and private Realtime policy are deployed. Keep anonymous Auth disabled. Verify the member/outsider checks in backend-local.md before wider invitations.
-3. Create or connect the Cloudflare account and push this Git repository to a remote you control.
-4. In Workers Builds, connect that repository. Set the build command to npm run build and the deploy command to npx wrangler@4.142.0 deploy. Set the project root to this repository folder if it sits inside a larger repository.
-5. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY as **build** variables. Vite embeds both into the browser bundle; neither is a server secret. Do not add a Supabase service-role or secret key.
-6. After the first deployment, put the exact HTTPS Workers origin into the Supabase Edge Function APP_ORIGINS setting and the project's site/redirect configuration as needed.
-7. Manually check a direct room link refresh, then complete remote four-player and six-player matches, privacy, reconnect, and rematch checks. Review actual usage before inviting wider traffic.
+1. Keep `.env.local` populated with `VITE_SUPABASE_URL` and
+   `VITE_SUPABASE_PUBLISHABLE_KEY` for the `shadman-app` project. These values
+   are embedded in the browser build; never use a service-role or secret key.
+2. Run `npm run build` locally.
+3. In Cloudflare Workers & Pages, open `colonist-webapp`, choose **New deployment**,
+   and upload the contents of `dist/`. Preserve the single-page application
+   not-found handling setting.
+4. Open the public URL and manually check room entry and a direct invite link.
 
-The Workers Builds settings and distinction between build-time and runtime variables are documented at https://developers.cloudflare.com/workers/ci-cd/builds/configuration/.
+`wrangler.jsonc` also names the same Worker and static asset directory if CLI
+deployment is configured later. A Git connection can be added separately to
+enable builds on push; limit the Cloudflare GitHub app to this repository if
+that is chosen, and set the two `VITE_` values as build variables.
 
-## Local validation already possible
+## Backend origin
 
-Run `npm ci` and `npm run build` to prepare the deployable bundle in `dist/`. Manually check the app flows in the browser using the implementation plan; do not use automated test runs as the release gate. A Cloudflare account is not needed for the local build. A Wrangler 4.142.0 dry run on 28 September 2026 read all 12 built asset files and validated the static Worker configuration without uploading.
+The Edge Function shared server reads `APP_ORIGINS` for hosted origins. The
+Cloudflare origin `https://colonist-webapp.faizansagheer346c.workers.dev` was
+saved as the only custom origin on 28 September 2026. Both deployed command
+functions contain the origin-checking code. Supabase makes secret updates
+available to functions without redeploying them. Local development origins
+are already in the function code. Email/password
+sign-in does not use an email or OAuth redirect, so the Supabase Auth Site URL
+does not need to change for this deployment.
 
-Wrangler 4 requires Node 22 or newer. This machine's default Node is 18, so use a Node 22+ runtime for future Wrangler commands. The current Workers Builds image defaults to a newer Node version; confirm that setting at deployment time.
+## Manual release checks
 
-Wrangler upload and the remote browser test are deferred until Cloudflare account access and the remaining hosted gameplay/access checks are complete. Local browser tabs have reached hosted Supabase commands successfully; a successful static build alone is not proof of a complete remote match.
+The hosted sign-in page and a direct `/room/example` URL rendered from the new
+domain on 28 September 2026. The remaining checks are a hosted sign-in and
+room command, real invite refresh, member/outsider privacy, reconnect, and
+complete four-player and expanded five- and six-player matches with rematches.
+Record observed results in the manual validation handoff; do not add automated
+tests for this work.

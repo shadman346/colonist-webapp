@@ -45,7 +45,7 @@ On this machine the Docker service is currently stopped, so the real local Supab
 | docs/implementation-plan.md | Detailed development and launch plan |
 | docs/design-handoff.md | Figma screen and component links, layout notes, and source boundary |
 | docs/asset-manifest.md | Shipped graphic/font sources and reference boundary |
-| wrangler.jsonc and docs/deployment-cloudflare.md | Static Cloudflare Workers deployment preparation |
+| wrangler.jsonc and docs/deployment-cloudflare.md | Live static Cloudflare Worker and deployment notes |
 
 Editable room and match screens with a clickable desktop/phone flow are in [Figma](https://www.figma.com/design/kw6x7wzSsQpzAfcUfSx2Z8/Friends-Hex-Game-%E2%80%94-Product-Design---Board-Screens?node-id=35-3). Dated Colonist screenshots and video stills remain in the sibling analysis directory; they are not bundled with this app.
 

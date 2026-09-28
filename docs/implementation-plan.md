@@ -130,10 +130,10 @@ This is part of the release scope, after the current 3–4 player match is manua
 
 ## 8. Gate G: hosting, QA, and handoff
 
-The owner-created Supabase project and its Codex MCP connection are available. Cloudflare account access is still needed at hosted integration. Figma team access already exists.
+The owner-created Supabase project and its Codex MCP connection are available. The UI is hosted at https://colonist-webapp.faizansagheer346c.workers.dev/ on a separate Cloudflare Worker. Figma team access already exists.
 
 1. Use the existing Supabase project `shadman-app`. Apply migrations; configure Auth, private Realtime, site/redirect URLs, and the command function. Run database and access checks with disposable users. Keep secret/service keys on the server; the browser receives only the project URL and publishable key.
-2. Connect the Git repository to [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) and deploy Vite output as [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/). Configure the SPA fallback so room/game deep links survive refresh. Start with the free workers.dev domain. Current documentation says [static-asset requests are free and unlimited](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
+2. The Vite output is deployed as [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) with SPA fallback on the free workers.dev domain. The first deployment was a direct dashboard upload. Git-triggered builds remain optional and are not connected; see [deployment-cloudflare.md](deployment-cloudflare.md). Current documentation says [static-asset requests are free and unlimited](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
 3. Manually run remote matches at 3–4 seats and six seats: invite, join, ready, start, roll, trade, Special Build for larger games, disconnect/reconnect, win, and rematch. Repeat access checks with an outsider, forged actor, guessed code, and stale/replayed command. Check phone and small laptop layouts.
 4. Inspect logs and actual usage. [Supabase Free](https://supabase.com/pricing) is plausible for a few turn-based rooms, but it can pause after a week of low activity. Document how to resume it, export/restore data, check usage, and roll back a deployment; recheck provider limits at launch.
 5. Keep source, migrations, asset manifest, design handoff, README, and operating runbook in this product folder. Tag a release after the manual remote match and privacy checks pass.
@@ -144,7 +144,7 @@ The rules, room, command, and visibility contracts; editable Figma flow; Base en
 
 1. Finish one complete hosted Supabase-backed match through the UI, including seven/discard/robber, development cards, victory, rematch, and reconnect. Record each bug, its manual reproduction steps, and the observed result after the fix; do not add automated tests.
 2. Manually verify member, outsider, and signed-out access; full-room rejection; race/stale command handling; private game views; and Realtime reconnect with isolated browser identities. Optionally repeat against the local Docker stack when available.
-3. Implement Gate F's 5–6 player Base board, room capacity, Special Build Phase, and responsive screens after the standard match works end to end. Manually complete a full six-player game before hosting.
+3. Complete Gate F's 5–6 player Base board, room capacity, Special Build Phase, and responsive screens after the standard match works end to end. Manually complete a full six-player game before wider invitations.
 4. Finish the remaining Figma dialogs and phone states for both board sizes, then compare them with the running app at 1280 × 720 and 390 × 844. Keep the imported asset provenance and design handoff current.
 5. After Cloudflare account access is available, deploy the static app, allow its exact HTTPS origin in the Edge Functions, and run remote-device playthroughs at both player counts. Remove the disposable QA accounts/room before wider invitations, and configure a mail sender for password recovery. Finish the operating runbook after real hosting behavior is observed.
 
