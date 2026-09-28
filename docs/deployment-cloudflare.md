@@ -7,7 +7,7 @@ The config uses single-page-application fallback so direct visits to future room
 ## Before publishing
 
 1. Finish the local Supabase and authoritative match UI checks in the implementation plan.
-2. Create the hosted Supabase project and apply the checked-in migrations and Edge Functions. Enable anonymous Auth and private Realtime authorization. Verify the member/outsider checks in backend-local.md.
+2. Use the existing [shadman-app Supabase project](supabase-connection.md) and apply the checked-in migrations and Edge Functions. Enable anonymous Auth and private Realtime authorization. Verify the member/outsider checks in backend-local.md.
 3. Create or connect the Cloudflare account and push this Git repository to a remote you control.
 4. In Workers Builds, connect that repository. Set the build command to npm run build and the deploy command to npx wrangler@4.142.0 deploy. Set the project root to this repository folder if it sits inside a larger repository.
 5. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY as **build** variables. Vite embeds both into the browser bundle; neither is a server secret. Do not add a Supabase service-role or secret key.
@@ -22,4 +22,4 @@ Run npm ci, npm run typecheck, npm test, and npm run build. The output is in dis
 
 Wrangler 4 requires Node 22 or newer. This machine's default Node is 18, so use a Node 22+ runtime for future Wrangler commands. The current Workers Builds image defaults to a newer Node version; confirm that setting at deployment time.
 
-Wrangler upload and the remote browser test are deferred until the owner-created Cloudflare and Supabase accounts are available. Do not treat a successful static build as proof that live room or game commands work.
+Wrangler upload and the remote browser test are deferred until Cloudflare account access and hosted Supabase deployment checks are complete. Do not treat a successful static build as proof that live room or game commands work.

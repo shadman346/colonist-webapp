@@ -1,0 +1,3 @@
+[mcp_servers.colonist_supabase]
+url = "https://mcp.supabase.com/mcp?project_ref=qgexzgypshkqzcgypcxr"
+enabled = true
