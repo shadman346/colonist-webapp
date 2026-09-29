@@ -589,6 +589,7 @@
   box-shadow: 0 2px 0 #174f71;
 }
 .match-hand-cards { height: 58px; gap: 1px; overflow: hidden; }
+.match-dock-actions { display: flex; align-items: center; gap: 5px; flex: none; }
 .match-resource-badge { width: 45px; height: 58px; }
 .match-resource-badge strong { min-width: 18px; height: 18px; line-height: 17px; font-size: 10px; }
 .match-empty-hand { padding: 0 8px; max-width: none; color: #6c7b7c; }
@@ -633,6 +634,7 @@
 @media (max-width: 1200px) {
   .match-toolbar { gap: 4px; }
   .match-hand { flex-basis: 135px; }
+  .match-dock-actions { gap: 4px; }
   .match-trade-shortcut, .match-piece-button, .match-turn-tile { width: 60px; height: 64px; }
   .match-piece-row { gap: 4px; }
 }
@@ -647,10 +649,11 @@
 @media (max-width: 700px) {
   .match-toolbar { height: auto; min-height: 137px; flex-wrap: wrap; gap: 4px; padding: 5px; }
   .match-hand { flex: 1 1 100%; height: 57px; }
+  .match-dock-actions { flex: 1 1 100%; justify-content: flex-start; min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 1px 2px 3px; scrollbar-width: thin; }
   .match-hand-cards { height: 48px; }
   .match-resource-badge { width: 40px; height: 48px; }
   .match-trade-shortcut, .match-piece-button, .match-turn-tile { width: clamp(45px, 13.6vw, 58px); height: 62px; }
-  .match-piece-row { flex: 1; justify-content: space-between; }
+  .match-piece-row { flex: none; }
   .match-piece-button img { width: 35px; height: 42px; }
   .match-piece-button .match-road-piece { height: 41px; }
   .match-city-piece { width: 39px; height: 38px; }
