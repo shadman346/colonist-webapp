@@ -85,7 +85,10 @@
   flex-direction: column;
 }
 .match-board-wrap { flex: 1; min-height: 0; overflow: hidden; }
-.match-board-svg { width: 100%; height: 100%; display: block; }
+.match-board-layers { position: relative; width: 100%; height: 100%; }
+.match-board-canvas, .match-board-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.match-board-svg { pointer-events: none; }
+.match-board-svg [role="button"] { pointer-events: auto; }
 .match-skip-targets { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .match-skip-targets:focus-visible { z-index: 8; top: 12px; right: 12px; width: auto; height: auto; clip-path: none; background: #fff4d0; color: #16405b; border-radius: 5px; padding: 8px 10px; font-size: 12px; font-weight: 800; }
 .match-phase-banner {
@@ -530,4 +533,134 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .match-sea-dice.ready, .match-sea-dice.rolling, .match-road-glow { animation: none; }
+}
+
+/* Compact sea dock: the board and the hand stay separate, while actions share
+   the same small tile language as the supplied gameplay reference. */
+.match-board-area { padding-bottom: 79px; }
+.match-sea-dice { bottom: 100px; }
+.match-toolbar {
+  height: 79px;
+  min-height: 79px;
+  gap: 5px;
+  padding: 4px 6px 5px;
+  background: #09639e;
+  border: 0;
+  border-top: 2px solid #0a76ad;
+  box-shadow: none;
+  overflow: visible;
+}
+.match-dock-status {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% + 4px);
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  max-width: calc(100% - 12px);
+  color: #263e4f;
+  font-size: 12px;
+  z-index: 7;
+}
+.match-dock-action, .match-dock-status .match-countdown, .match-dock-status button {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 13px;
+  border-radius: 5px;
+  background: #f7f4ed;
+  border: 1px solid #d4d2c9;
+  box-shadow: 0 2px 2px #06466b70;
+  white-space: nowrap;
+}
+.match-dock-action { min-width: 175px; font-family: Georgia, serif; }
+.match-dock-status .match-countdown { min-width: 65px; color: #273e4a; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.match-dock-status .match-countdown.urgent { background: #ba4f3b; color: #fff; border-color: #ffd7a9; }
+.match-dock-status button { color: #20435c; font-weight: 800; cursor: pointer; }
+.match-hand {
+  flex: 1 1 180px;
+  min-width: 100px;
+  height: 68px;
+  padding: 3px 7px;
+  border: 2px solid #f8f7ef;
+  border-radius: 6px;
+  background: linear-gradient(115deg, #f7f4ed, #eae4d9);
+  box-shadow: 0 2px 0 #174f71;
+}
+.match-hand-cards { height: 58px; gap: 1px; overflow: hidden; }
+.match-resource-badge { width: 45px; height: 58px; }
+.match-resource-badge strong { min-width: 18px; height: 18px; line-height: 17px; font-size: 10px; }
+.match-empty-hand { padding: 0 8px; max-width: none; color: #6c7b7c; }
+.match-trade-shortcut, .match-piece-button, .match-turn-tile {
+  position: relative;
+  flex: none;
+  width: 66px;
+  height: 67px;
+  padding: 3px;
+  border: 3px solid #f7fbfa;
+  border-radius: 9px;
+  color: #285676;
+  background: linear-gradient(145deg, #6dc5d5 0%, #a6d8e1 56%, #72bfd1 100%);
+  box-shadow: inset 0 0 0 1px #70afc3, 0 3px 0 #114f72;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 130ms ease-out, filter 130ms ease-out, box-shadow 130ms ease-out;
+}
+.match-trade-shortcut:hover:not(:disabled), .match-piece-button:hover:not(:disabled), .match-turn-tile:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.08); }
+.match-trade-shortcut:focus-visible, .match-piece-button:focus-visible, .match-turn-tile:focus-visible { outline: 3px solid #ffcf54; outline-offset: 2px; }
+.match-piece-row { display: flex; gap: 5px; flex: none; }
+.match-piece-button img { width: 43px; height: 48px; object-fit: contain; }
+.match-piece-button .match-road-piece { width: 20px; height: 47px; }
+.match-piece-button .match-special-piece { width: 42px; height: 51px; }
+.match-city-piece { width: 48px; height: 43px; filter: saturate(.75); }
+.match-trade-art { position: relative; display: grid; place-items: center; width: 47px; height: 49px; }
+.match-trade-art img { width: 26px; height: 38px; opacity: .65; }
+.match-trade-art svg { position: absolute; width: 42px; height: 30px; stroke: #eefafa; stroke-width: 2.4; filter: drop-shadow(0 1px 1px #346478); }
+.match-piece-button > b { top: -2px; right: -2px; min-width: 22px; height: 21px; border-radius: 0 5px 0 10px; background: #4b98ae; line-height: 21px; font-size: 11px; }
+.match-piece-button.ready, .match-turn-tile.ready { border-color: #fff; background: linear-gradient(145deg, #87d6e3, #a7e4ec); box-shadow: inset 0 0 0 1px #95d7e3, 0 3px 0 #114f72; }
+.match-piece-button.selected { background: linear-gradient(145deg, #fff3a8, #9edbe9); box-shadow: inset 0 0 0 2px #f4c34c, 0 0 12px #ffe16f, 0 3px 0 #114f72; animation: match-tile-ready 1.7s ease-in-out infinite; }
+.match-trade-shortcut.bank-ready { border-color: #f5e385; background: linear-gradient(145deg, #a5f2eb, #6fc8d7); box-shadow: 0 0 0 2px #f1ce6b, 0 3px 0 #114f72; }
+.match-screen .match-trade-shortcut:disabled, .match-screen .match-piece-button:disabled, .match-screen .match-turn-tile:disabled { opacity: 1; cursor: not-allowed; }
+.match-piece-button:disabled img, .match-piece-button:disabled .match-city-piece, .match-trade-shortcut:disabled .match-trade-art, .match-turn-tile:disabled svg { filter: grayscale(.7); opacity: .53; }
+.match-turn-tile svg { color: #477f9a; fill: #d7eef0; }
+.match-piece-cost { bottom: calc(100% + 11px); }
+.match-target-list { bottom: calc(100% + 45px); }
+@keyframes match-tile-ready { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.17); } }
+
+@media (max-width: 1200px) {
+  .match-toolbar { gap: 4px; }
+  .match-hand { flex-basis: 135px; }
+  .match-trade-shortcut, .match-piece-button, .match-turn-tile { width: 60px; height: 64px; }
+  .match-piece-row { gap: 4px; }
+}
+@media (max-width: 960px) {
+  .match-board-area { padding-bottom: 0; }
+  .match-sea-dice { bottom: 18px; }
+  .match-toolbar { position: relative; order: 1; width: 100%; height: 77px; min-height: 77px; flex-wrap: nowrap; padding: 4px 6px; }
+  .match-hand { flex: 1 1 auto; min-width: 125px; }
+  .match-dock-status { bottom: calc(100% + 5px); }
+  .match-target-list { bottom: calc(100% + 40px); }
+}
+@media (max-width: 700px) {
+  .match-toolbar { height: auto; min-height: 137px; flex-wrap: wrap; gap: 4px; padding: 5px; }
+  .match-hand { flex: 1 1 100%; height: 57px; }
+  .match-hand-cards { height: 48px; }
+  .match-resource-badge { width: 40px; height: 48px; }
+  .match-trade-shortcut, .match-piece-button, .match-turn-tile { width: clamp(45px, 13.6vw, 58px); height: 62px; }
+  .match-piece-row { flex: 1; justify-content: space-between; }
+  .match-piece-button img { width: 35px; height: 42px; }
+  .match-piece-button .match-road-piece { height: 41px; }
+  .match-city-piece { width: 39px; height: 38px; }
+  .match-dock-status { right: 5px; bottom: calc(100% + 3px); max-width: calc(100% - 10px); }
+  .match-dock-action { min-width: 0; }
+  .match-dock-action, .match-dock-status .match-countdown, .match-dock-status button { min-height: 30px; padding: 4px 8px; font-size: 10px; }
+  .match-dock-status .match-countdown { min-width: 52px; }
+  .match-target-list { bottom: calc(100% + 40px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .match-piece-button.selected { animation: none; }
+  .match-trade-shortcut, .match-piece-button, .match-turn-tile { transition: none; }
 }

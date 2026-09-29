@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   Check,
   Copy,
+  Hourglass,
   MessageCircle,
   Minus,
   Plus,
@@ -196,6 +197,119 @@ function keyboardClick(event: React.KeyboardEvent<SVGElement>, action: () => voi
   }
 }
 
+type BoardPoint = { x: number; y: number };
+type PortPlacement = { port: GameView["board"]["ports"][number]; a: BoardPoint; b: BoardPoint; ship: BoardPoint };
+const boardImages = new Map<string, HTMLImageElement>();
+
+function BoardCanvas({ view, size, ports }: { view: GameView; size: number; ports: PortPlacement[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) return;
+    const pending = new Set<HTMLImageElement>();
+    let disposed = false;
+    const image = (url: string, x: number, y: number, width: number, height: number) => {
+      let asset = boardImages.get(url);
+      if (!asset) {
+        asset = new Image();
+        asset.src = url;
+        boardImages.set(url, asset);
+      }
+      if (asset.complete && asset.naturalWidth) context.drawImage(asset, x, y, width, height);
+      else if (!asset.complete && !pending.has(asset)) {
+        asset.addEventListener("load", draw, { once: true });
+        pending.add(asset);
+      }
+    };
+    const polygon = (x: number, y: number, radius: number) => {
+      context.beginPath();
+      for (let corner = 0; corner < 6; corner++) {
+        const angle = (corner * 60 - 90) * Math.PI / 180;
+        const px = x + radius * Math.cos(angle);
+        const py = y + radius * Math.sin(angle);
+        if (corner === 0) context.moveTo(px, py);
+        else context.lineTo(px, py);
+      }
+      context.closePath();
+    };
+    function draw() {
+      if (disposed || !canvas || !context) return;
+      const bounds = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(bounds.width * dpr));
+      const height = Math.max(1, Math.round(bounds.height * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.fillStyle = "#09639e";
+      context.fillRect(0, 0, bounds.width, bounds.height);
+      const scale = Math.min(bounds.width / 900, bounds.height / 690);
+      context.translate((bounds.width - 900 * scale) / 2, (bounds.height - 690 * scale) / 2);
+      context.scale(scale, scale);
+
+      const hexes = Object.values(view.board.hexes);
+      context.save();
+      context.shadowColor = "#064a6b99";
+      context.shadowBlur = 13;
+      context.shadowOffsetY = 9;
+      for (const [color, strokeWidth] of [["#0d78ad", 48], ["#78c7e2", 38], ["#f3f5d9", 29], ["#e2c27a", 21]] as const) {
+        context.fillStyle = "#dfbc70";
+        context.strokeStyle = color;
+        context.lineWidth = strokeWidth;
+        context.lineJoin = "round";
+        for (const hex of hexes) {
+          const center = atHex(hex.q, hex.r, size);
+          polygon(center.x, center.y, size);
+          context.fill();
+          context.stroke();
+        }
+        context.shadowColor = "transparent";
+      }
+      context.restore();
+
+      for (const { a, b, ship } of ports) {
+        for (const from of [a, b]) {
+          const to = pierEnd(from, ship);
+          context.beginPath();
+          context.moveTo(from.x, from.y);
+          context.lineTo(to.x, to.y);
+          context.lineWidth = 11;
+          context.strokeStyle = "#80511c";
+          context.stroke();
+          context.setLineDash([6, 2]);
+          context.lineWidth = 8;
+          context.strokeStyle = "#dca13a";
+          context.stroke();
+          context.setLineDash([]);
+        }
+      }
+      const tileWidth = Math.sqrt(3) * size;
+      for (const hex of hexes) {
+        const center = atHex(hex.q, hex.r, size);
+        image(terrainAsset(hex.terrain), center.x - tileWidth / 2, center.y - size, tileWidth, size * 2);
+        if (hex.number !== null) image(numberTokenAsset(hex.number), center.x - 22, center.y + 4, 44, 44);
+        if (view.robberHexId === hex.id) image(baseAsset("icon-robber"), center.x + 18, center.y - 53, 39, 39);
+      }
+      for (const { port, ship } of ports) image(portAsset(port.resource), ship.x - 31, ship.y - 31, 62, 62);
+    }
+    const resizeObserver = new ResizeObserver(draw);
+    resizeObserver.observe(canvas);
+    draw();
+    return () => {
+      disposed = true;
+      resizeObserver.disconnect();
+      for (const asset of pending) asset.removeEventListener("load", draw);
+    };
+  }, [view.board, view.robberHexId, size, ports]);
+
+  return <canvas ref={canvasRef} className="match-board-canvas" aria-hidden="true" />;
+}
+
 function GameBoard({ view, placement, selectedVertex, roadAnchor, onSelectVertex, onRoadAnchor, onCommand, busy }: {
   view: GameView;
   placement: Placement;
@@ -234,7 +348,7 @@ function GameBoard({ view, placement, selectedVertex, roadAnchor, onSelectVertex
   const hexes = Object.values(view.board.hexes);
   const vertices = view.board.vertices;
   const edges = view.board.edges;
-  const portPlacements = view.board.ports.map((port) => {
+  const portPlacements = useMemo(() => view.board.ports.map((port) => {
     const [a, b] = port.vertexIds.map((id) => atVertex(vertices[id]!.x, vertices[id]!.y, size));
     const slot = PORT_SLOTS.find((candidate) => view.board.hexes[candidate.hexId]?.edgeIds[candidate.edge] === port.edgeId);
     const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -245,66 +359,20 @@ function GameBoard({ view, placement, selectedVertex, roadAnchor, onSelectVertex
       ? { x: BOARD_ORIGIN.x + slot.u * tileWidth, y: BOARD_ORIGIN.y + slot.v * size * 1.5 }
       : { x: midpoint.x + dx / length * size, y: midpoint.y + dy / length * size };
     return { port, a, b, ship };
-  });
+  }), [view.board, size, tileWidth]);
   const hexAction = (id: string) => onCommand({ type: "move-robber", hexId: id });
   return (
-    <svg className="match-board-svg" viewBox="0 0 900 690" role="group" aria-label="Playable Base island board">
-      <defs>
-        <filter id="match-shadow"><feDropShadow dx="0" dy="9" stdDeviation="10" floodColor="#064a6b" floodOpacity=".38" /></filter>
-      </defs>
-      <rect width="900" height="690" fill="#09639e" />
-      <g className="match-coast" strokeLinejoin="round" filter="url(#match-shadow)">
-        {(["#0d78ad", "#78c7e2", "#f3f5d9", "#e2c27a"] as const).map((color, layer) => (
-          <g key={color} fill="#dfbc70" stroke={color} strokeWidth={[48, 38, 29, 21][layer]}>
-            {hexes.map((hex) => {
-              const point = atHex(hex.q, hex.r, size);
-              return <polygon key={hex.id} points={polygonPoints(point.x, point.y, size)} />;
-            })}
-          </g>
-        ))}
-      </g>
-      {portPlacements.map(({ port, a, b, ship }) => (
-        <g key={`${port.edgeId}:piers`} className="match-port-piers">
-          {[a, b].map((from, index) => {
-            const to = pierEnd(from, ship);
-            return <g key={index}>
-              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#80511c" strokeWidth="11" />
-              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#dca13a" strokeWidth="8" strokeDasharray="6 2" />
-            </g>;
-          })}
-        </g>
-      ))}
-      {hexes.map((hex) => {
+    <div className="match-board-layers" role="group" aria-label="Playable island board">
+      <BoardCanvas view={view} size={size} ports={portPlacements} />
+      <svg className="match-board-svg" viewBox="0 0 900 690" aria-label="Board placement controls">
+      {hexes.filter((hex) => robberIds.includes(hex.id)).map((hex) => {
         const point = atHex(hex.q, hex.r, size);
-        const robber = view.robberHexId === hex.id;
-        const legalRobber = robberIds.includes(hex.id);
-        return (
-          <g key={hex.id} className={`match-hex match-hex-${hex.terrain}`}>
-            <image href={terrainAsset(hex.terrain)} x={point.x - tileWidth / 2} y={point.y - size} width={tileWidth} height={size * 2} />
-            {hex.number !== null && <image href={numberTokenAsset(hex.number)} x={point.x - 22} y={point.y + 4} width="44" height="44" />}
-            {robber && (
-              <image href={baseAsset("icon-robber")} x={point.x + 18} y={point.y - 53} width="39" height="39" />
-            )}
-            <title>{terrainLabels[hex.terrain]}{hex.number ? ` · ${hex.number}` : ""}{robber ? " · Robber" : ""}</title>
-            {legalRobber && (
-              <g
-                className="match-legal-hex"
-                role="button"
-                tabIndex={0}
-                aria-label={hexLabel(view, hex.id)}
-                onClick={() => !busy && hexAction(hex.id)}
-                onKeyDown={(event) => keyboardClick(event, () => !busy && hexAction(hex.id))}
-              >
-                <polygon points={polygonPoints(point.x, point.y, size - 8)} fill="#ffe1a2" opacity=".18" stroke="#fff6da" strokeWidth="3" strokeDasharray="7 5" />
-              </g>
-            )}
-          </g>
-        );
+        return <g key={hex.id} className="match-legal-hex" role="button" tabIndex={0} aria-label={hexLabel(view, hex.id)}
+          onClick={() => !busy && hexAction(hex.id)}
+          onKeyDown={(event) => keyboardClick(event, () => !busy && hexAction(hex.id))}>
+          <polygon points={polygonPoints(point.x, point.y, size - 8)} fill="#ffe1a2" opacity=".18" stroke="#fff6da" strokeWidth="3" strokeDasharray="7 5" />
+        </g>;
       })}
-      {portPlacements.map(({ port, ship }) => <g key={port.edgeId} className="match-port">
-        <image href={portAsset(port.resource)} x={ship.x - 31} y={ship.y - 31} width="62" height="62" />
-        <title>{port.resource ? `${resources[port.resource].label} port` : "Any resource port"}</title>
-      </g>)}
       {Object.entries(view.roads).map(([edgeId, ownerId]) => {
         const [aId, bId] = edges[edgeId]!.vertexIds;
         const a = atVertex(vertices[aId]!.x, vertices[aId]!.y, size);
@@ -390,7 +458,8 @@ function GameBoard({ view, placement, selectedVertex, roadAnchor, onSelectVertex
           </g>
         );
       })}
-    </svg>
+      </svg>
+    </div>
   );
 }
 
@@ -844,6 +913,15 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
   const cityCount = Object.values(view.buildings).filter((building) => building.ownerId === view.self.id && building.level === "city").length;
   const targets = boardTargets(view, placement);
   const latestChat = room.chat.slice(-8);
+  const dockPrompt = !myTurn ? `Waiting for ${active?.name ?? "a friend"}`
+    : view.phase === "setup-settlement" ? "Place Settlement"
+    : view.phase === "setup-road" || view.phase === "road-building" ? "Place Road"
+    : view.phase === "pre-roll" ? "Roll Dice"
+    : placement === "settlement" ? "Place Settlement"
+    : placement === "road" ? "Place Road"
+    : placement === "city" ? "Upgrade House"
+    : view.phase === "action" ? "Build, Trade or End Turn"
+    : phaseLabels[view.phase];
   return (
     <div className="match-screen">
       <header className="match-topbar">
@@ -854,7 +932,6 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
         <button className="match-copy" type="button" title="Copy invite link" aria-label="Copy invite link" onClick={onCopy}><Copy size={17} /></button>
         <button className="match-sound-toggle" type="button" aria-label={soundOn ? "Mute turn sound" : "Enable turn sound"} title={soundOn ? "Turn sound on" : "Turn sound off"} onClick={() => { setTurnSoundEnabled(!soundOn); setSoundOn(!soundOn); }}>{soundOn ? <Volume2 size={17} /> : <VolumeX size={17} />}</button>
         <span className="match-turn-badge">TURN {view.turn || "SETUP"}</span>
-        {remainingSeconds !== null && view.phase !== "completed" && <span className={`match-countdown ${remainingSeconds <= 15 ? "urgent" : ""}`} role="timer" aria-label={`${remainingSeconds} seconds remaining in this turn`}>{timerText}</span>}
         <span className={`match-connection ${connectionStatus}`}>{connectionStatus === "live" ? "Live" : connectionStatus === "reconnecting" ? "Reconnecting" : "Connecting"}</span>
       </header>
 
@@ -890,20 +967,22 @@ export default function MatchView({ room, identity, onBack, onCopy, onChat }: {
       </div>
 
       <div className="match-toolbar">
+        <div className="match-dock-status" role="status">
+          <span className="match-dock-action">{dockPrompt}</span>
+          {remainingSeconds !== null && view.phase !== "completed" && <span className={`match-countdown ${remainingSeconds <= 15 ? "urgent" : ""}`} role="timer" aria-label={`${remainingSeconds} seconds remaining in this turn`}>{timerText}</span>}
+          {view.legal.canRequestSpecialBuild && <button type="button" disabled={busy} onClick={() => void command({ type: "request-special-build", requested: !view.legal.specialBuildRequested })}>{view.legal.specialBuildRequested ? "Cancel special build" : "Request special build"}</button>}
+          {view.legal.canPassSpecialBuild && <button type="button" disabled={busy} onClick={() => void command({ type: "pass-special-build" })}>Finish special build</button>}
+        </div>
         <div className="match-hand"><span className="match-toolbar-label">YOUR HAND · {handSize} CARDS</span><div className="match-hand-cards">{handSize ? RESOURCES.filter((resource) => view.self.resources[resource] > 0).map((resource) => <ResourceBadge key={resource} resource={resource} count={view.self.resources[resource]} />) : <span className="match-empty-hand">Resources arrive after your second house.</span>}</div></div>
-        <button className={`match-trade-shortcut ${view.legal.bankTradeGive.length ? "bank-ready" : ""}`} type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} title={view.legal.bankTradeGive.length ? "Bank trade available" : "Trade with friends"} onClick={() => { setPlacement(null); setRoadAnchor(null); setTradeInitialTab(view.legal.bankTradeGive.length ? "bank" : "friend"); setPanel("trade"); }}><ArrowLeftRight size={27} /><span>TRADE</span></button>
+        <button className={`match-trade-shortcut ${view.legal.bankTradeGive.length ? "bank-ready" : ""}`} type="button" disabled={!(view.legal.canOfferTrade || view.legal.bankTradeGive.length) || busy} title={view.legal.bankTradeGive.length ? "Bank trade available" : "Trade with friends"} aria-label={view.legal.bankTradeGive.length ? "Trade with bank or friends; bank trade available" : "Trade with friends"} onClick={() => { setPlacement(null); setRoadAnchor(null); setTradeInitialTab(view.legal.bankTradeGive.length ? "bank" : "friend"); setPanel("trade"); }}><span className="match-trade-art"><img src={resourceCardAsset("ore")} alt="" /><ArrowLeftRight size={26} /></span><span className="match-toolbar-label">Trade</span></button>
         <div className="match-piece-row" role="group" aria-label="Build and card actions">
-          <button className={`match-piece-button ${roadReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.road) ? "affordable" : ""} ${placement === "road" || view.phase === "setup-road" ? "selected" : ""}`} type="button" disabled={!roadReady || busy} title="Road · 1 wood and 1 brick" onClick={() => { setPanel(null); setRoadAnchor(null); setPlacement(placement === "road" ? null : "road"); }}><CostPreview cost={COSTS.road} /><img className="match-road-piece" src={pieceAsset("road", selfColor)} alt="" /><b>{Math.max(0, 15 - roadCount)}</b><span>ROAD</span></button>
-          <button className={`match-piece-button ${houseReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.settlement) ? "affordable" : ""} ${placement === "settlement" || view.phase === "setup-settlement" ? "selected" : ""}`} type="button" disabled={!houseReady || busy} title="House · 1 wood, 1 brick, 1 wool, 1 grain" onClick={() => { setPanel(null); setRoadAnchor(null); setSelectedVertex(null); setPlacement(placement === "settlement" ? null : "settlement"); }}><CostPreview cost={COSTS.settlement} /><img src={pieceAsset("settlement", selfColor)} alt="" /><b>{Math.max(0, 5 - houseCount)}</b><span>HOUSE</span></button>
-          <button className={`match-piece-button ${cityReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.city) ? "affordable" : ""} ${placement === "city" ? "selected" : ""}`} type="button" disabled={!cityReady || busy} title="House upgrade · 2 grain and 3 ore" onClick={() => { setPanel(null); setRoadAnchor(null); setSelectedVertex(null); setPlacement(placement === "city" ? null : "city"); }}><CostPreview cost={COSTS.city} /><CityIcon color={palette[selfColor] ?? selfColor} /><b>{Math.max(0, 4 - cityCount)}</b><span>UPGRADE</span></button>
-          <button className={`match-piece-button ${robberReady ? "ready" : ""}`} type="button" disabled={!robberReady || busy} title={knightCard ? "Play Knight and move robber" : "Move robber"} onClick={() => { setPanel(null); setPlacement(null); if (knightCard && view.phase !== "robber-move") void command({ type: "play-knight", cardId: knightCard.id }); }}><img src={baseAsset("icon-robber")} alt="" /><span>ROBBER</span></button>
-          <button className={`match-piece-button ${devReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.development) ? "affordable" : ""}`} type="button" disabled={!(view.legal.canBuyDevelopment || view.self.developmentCards.length) || busy} title="Special development cards · 1 wool, 1 grain, 1 ore to buy" onClick={() => { setPlacement(null); setRoadAnchor(null); setPanel("development"); }}><CostPreview cost={COSTS.development} /><img src={baseAsset("card-knight")} alt="" /><span>DEV CARD</span></button>
+          <button className={`match-piece-button ${devReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.development) ? "affordable" : ""}`} type="button" disabled={!(view.legal.canBuyDevelopment || view.self.developmentCards.length) || busy} title="Special development cards · 1 wool, 1 grain, 1 ore to buy" aria-label="Special development cards" onClick={() => { setPlacement(null); setRoadAnchor(null); setPanel("development"); }}><CostPreview cost={COSTS.development} /><img className="match-special-piece" src={baseAsset("card-knight")} alt="" /><span className="match-toolbar-label">Special card</span></button>
+          <button className={`match-piece-button ${roadReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.road) ? "affordable" : ""} ${placement === "road" || view.phase === "setup-road" ? "selected" : ""}`} type="button" disabled={!roadReady || busy} title="Road · 1 wood and 1 brick" aria-label="Build road" onClick={() => { setPanel(null); setRoadAnchor(null); setPlacement(placement === "road" ? null : "road"); }}><CostPreview cost={COSTS.road} /><img className="match-road-piece" src={pieceAsset("road", selfColor)} alt="" /><b>{Math.max(0, 15 - roadCount)}</b><span className="match-toolbar-label">Road</span></button>
+          <button className={`match-piece-button ${houseReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.settlement) ? "affordable" : ""} ${placement === "settlement" || view.phase === "setup-settlement" ? "selected" : ""}`} type="button" disabled={!houseReady || busy} title="House · 1 wood, 1 brick, 1 wool, 1 grain" aria-label="Build house" onClick={() => { setPanel(null); setRoadAnchor(null); setSelectedVertex(null); setPlacement(placement === "settlement" ? null : "settlement"); }}><CostPreview cost={COSTS.settlement} /><img src={pieceAsset("settlement", selfColor)} alt="" /><b>{Math.max(0, 5 - houseCount)}</b><span className="match-toolbar-label">House</span></button>
+          <button className={`match-piece-button ${cityReady ? "ready" : ""} ${canPay(view.self.resources, COSTS.city) ? "affordable" : ""} ${placement === "city" ? "selected" : ""}`} type="button" disabled={!cityReady || busy} title="House upgrade · 2 grain and 3 ore" aria-label="Upgrade house to city" onClick={() => { setPanel(null); setRoadAnchor(null); setSelectedVertex(null); setPlacement(placement === "city" ? null : "city"); }}><CostPreview cost={COSTS.city} /><CityIcon color={palette[selfColor] ?? selfColor} /><b>{Math.max(0, 4 - cityCount)}</b><span className="match-toolbar-label">Upgrade house</span></button>
+          {robberReady && <button className="match-piece-button ready" type="button" disabled={busy} title={knightCard ? "Play Knight and move robber" : "Move robber on the island"} aria-label={knightCard ? "Play Knight" : "Move robber"} onClick={() => { setPanel(null); setPlacement(null); if (knightCard && view.phase !== "robber-move") void command({ type: "play-knight", cardId: knightCard.id }); }}><img src={baseAsset("icon-robber")} alt="" /><span className="match-toolbar-label">Robber</span></button>}
         </div>
-        <div className="match-turn-controls">
-          {view.legal.canRequestSpecialBuild && <button type="button" disabled={busy} onClick={() => void command({ type: "request-special-build", requested: !view.legal.specialBuildRequested })}>{view.legal.specialBuildRequested ? "Cancel request" : "Special Build"}</button>}
-          {view.legal.canPassSpecialBuild && <button type="button" disabled={busy} onClick={() => void command({ type: "pass-special-build" })}>Finish build</button>}
-          <button type="button" disabled={!view.legal.canEndTurn || busy} onClick={() => void command({ type: "end-turn" })}><Check size={15} /> End turn</button>
-        </div>
+        <button className={`match-turn-tile ${view.legal.canEndTurn ? "ready" : ""}`} type="button" disabled={!view.legal.canEndTurn || busy} title="End turn" aria-label="End turn" onClick={() => void command({ type: "end-turn" })}><Hourglass size={38} strokeWidth={1.8} /><span className="match-toolbar-label">End turn</span></button>
         {targets.length > 0 && <details className="match-target-list">
           <summary id="match-target-picker">Choose from {targets.length} legal {targets.length === 1 ? "position" : "positions"}</summary>
           <div>{targets.map((target) => <button key={target.id} type="button" disabled={busy} onClick={() => { if ("vertexId" in target.command) setSelectedVertex({ id: target.command.vertexId, city: target.command.type === "build-city" }); else void command(target.command); }}>{target.label}</button>)}</div>

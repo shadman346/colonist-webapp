@@ -29,3 +29,15 @@ The screenshots are references, not game-state data. Affordability and legal act
 | Room socket after timeout | Recover to Live with polling as a fallback | A timed-out private channel recovered to Live after reconnect handling was added. | Observe with two remote player devices during a longer match. |
 | Setup road from selected house | House selection reveals neighboring legal road edges | Screen and click logic are prepared; the active QA match had already completed setup. | Manually validate in the next new remote match. |
 | Resource flight after dice | New cards travel from bank to hand and history lists recipients | A later 2 + 2 roll awarded Design QA one grain. The +1 card flight appeared, the hand increased from four to five, and history listed the grain receipt. | The short motion was not captured in a still screenshot. |
+
+## Compact dock and Canvas island, 29 September 2026
+
+The later bottom-bar crop adds the precise layout reference for this pass: a long ivory resource tray, cyan square action tiles, piece counts on their upper right corners, and a small placement prompt with turn clock above the right edge. Existing card and piece artwork was reused at tile scale; cropping the low-resolution screenshot would have made those controls blurry. The static island, coastline, piers, terrain, numbers, and ports now render on a high-density Canvas. SVG remains over it for owned pieces and accessible legal placement controls, including the house-to-road selection and the confirm popup. This keeps the server-owned rules and target labels intact while supporting a smoother board presentation.
+
+| Scenario | Expected | Observed | Open item |
+| --- | --- | --- | --- |
+| Desktop QA room on a friend's timed turn | Canvas island remains aligned with buildings; compact card tray and action tiles stay inside the board column; prompt and clock show who is playing | At 1280×720, terrain, coast, ports, roads, buildings, cards, six dock tiles, prompt, and timer rendered without overlap. Private room status stayed Live. | Narrow mobile viewport has not been visually inspected in this pass. |
+| Design QA turn 421 dice roll | Roll control appears in lower-left sea; result, hand, and history update in place | Rolled 1+5. History showed both dice and Design QA receiving one wood; hand rose from 11 to 12 cards and Orange QA's ore receipt appeared. | Short card flight was not captured during this roll. |
+| City selection and confirmation | Affordable upgrade tile highlights; only legal corners can be selected; confirmation precedes the build | Upgrade tile enabled and two corners were offered. Selecting one displayed the city popup. Confirming upgraded the house, reduced hand from 12 to 7, raised Design QA from 2 to 3 VP, and added the history event. | Setup settlement and road selection need a fresh match for manual recheck. |
+
+No permanent tests were added or run for this pass.
